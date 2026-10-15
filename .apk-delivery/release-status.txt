@@ -1,0 +1,5 @@
+release_outcome=failure
+artifact_url=https://github.com/ratulsdream/basha-hisab/actions/runs/38766930576/artifacts/11989432161
+run_url=https://github.com/ratulsdream/basha-hisab/actions/runs/38766930576
+release_auth_present=yes
+HTTP 403: Resource not accessible by integration (https://api.github.com/repos/ratulsdream/basha-hisab/releases)
