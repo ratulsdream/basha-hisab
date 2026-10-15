@@ -78,7 +78,7 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: v1.0.0-test-33e774d
       ASSET_DIR: published-apks
@@ -124,6 +124,8 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          exec 2> >(tee "$RUNNER_TEMP/release-error.log" >&2)
+          trap 'printf "\n### Release upload diagnostic\n\n" >> "$GITHUB_STEP_SUMMARY"; tail -n 20 "$RUNNER_TEMP/release-error.log" >> "$GITHUB_STEP_SUMMARY"' ERR
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$ASSET_DIR/BashaHisab-debug.apk" "$ASSET_DIR/BashaHisab-release-test.apk" --clobber
           else
