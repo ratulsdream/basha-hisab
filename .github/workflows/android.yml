@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [main, work]
+    branches: [main, work, delivery/prebuilt-apk]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   checks:
+    if: github.ref != 'refs/heads/delivery/prebuilt-apk' && !contains(github.event.head_commit.message, '[prebuilt-delivery]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,3 +70,88 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  publish-prebuilt:
+    name: Publish already-built APKs (no rebuild)
+    if: github.ref == 'refs/heads/delivery/prebuilt-apk' && contains(github.event.head_commit.message, '[prebuilt-ready]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v1.0.0-test-33e774d
+      ASSET_DIR: ${{ runner.temp }}/bashahisab-prebuilt
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble and verify the existing signed APKs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          source = Path('.apk-delivery')
+          manifest = json.loads((source / 'manifest.json').read_text())
+          assert manifest['source_commit'] == '33e774d29e7658e62ccac3908f1e4840eea4192d'
+          destination = Path(os.environ['ASSET_DIR'])
+          destination.mkdir(parents=True, exist_ok=True)
+          expected_names = {'BashaHisab-debug.apk', 'BashaHisab-release-test.apk'}
+          assert {asset['name'] for asset in manifest['assets']} == expected_names
+          for asset in manifest['assets']:
+              result = destination / asset['name']
+              digest = hashlib.sha256()
+              with result.open('wb') as output:
+                  for part in asset['parts']:
+                      assert Path(part['name']).name == part['name']
+                      data = (source / part['name']).read_bytes()
+                      assert hashlib.sha256(data).hexdigest() == part['sha256']
+                      output.write(data)
+                      digest.update(data)
+              assert result.stat().st_size == asset['bytes']
+              assert digest.hexdigest() == asset['sha256']
+              print(f"Verified {asset['name']}: {asset['bytes']} bytes, SHA-256 {asset['sha256']}")
+          PY
+      - name: Upload downloadable artifacts as a fallback
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BashaHisab-prebuilt-33e774d
+          path: ${{ env.ASSET_DIR }}/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish the verified APKs as GitHub Release assets
+        id: release
+        continue-on-error: true
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ASSET_DIR/BashaHisab-debug.apk" "$ASSET_DIR/BashaHisab-release-test.apk" --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "$ASSET_DIR/BashaHisab-debug.apk" "$ASSET_DIR/BashaHisab-release-test.apk" \
+              --target 33e774d29e7658e62ccac3908f1e4840eea4192d \
+              --title 'BashaHisab 1.0.0 — test APKs' --prerelease --draft \
+              --notes-file .apk-delivery/release-notes.md
+          fi
+          gh release view "$RELEASE_TAG" --json assets > "$RUNNER_TEMP/release-assets.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          expected = json.loads(Path('.apk-delivery/manifest.json').read_text())['assets']
+          uploaded = {a['name']: a for a in json.loads((Path(os.environ['RUNNER_TEMP']) / 'release-assets.json').read_text())['assets']}
+          for asset in expected:
+              assert asset['name'] in uploaded
+              assert uploaded[asset['name']]['size'] == asset['bytes']
+          PY
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease
+          gh release view "$RELEASE_TAG" --json url --jq .url
+      - name: Write phone download instructions
+        if: always() && steps.artifact.outcome == 'success'
+        shell: bash
+        run: |
+          echo '## Download BashaHisab on Android' >> "$GITHUB_STEP_SUMMARY"
+          if [ '${{ steps.release.outcome }}' = 'success' ]; then
+            echo "Open https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG and tap **Assets → BashaHisab-debug.apk**." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'Artifact fallback: ${{ steps.artifact.outputs.artifact-url }}' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Both APKs are the existing verified builds, not rebuilds. Release-test is debug-signed for testing only.' >> "$GITHUB_STEP_SUMMARY"
