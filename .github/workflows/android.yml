@@ -81,7 +81,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: v1.0.0-test-33e774d
-      ASSET_DIR: .published-apks
+      ASSET_DIR: published-apks
     steps:
       - uses: actions/checkout@v4
       - name: Reassemble and verify the existing signed APKs
