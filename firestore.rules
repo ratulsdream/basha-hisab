@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function housePath(id) { return /databases/$(database)/documents/households/$(id); }
+    function member(id) {
+      return signedIn() && request.auth.uid in get(housePath(id)).data.memberIds;
+    }
+    function validName(value) { return value is string && value.size() > 0 && value.size() <= 50; }
+    function validHouse(data) {
+      return data.keys().hasAll(['memberIds', 'memberNames', 'currency', 'inviteCode', 'createdAt'])
+        && data.keys().hasOnly(['memberIds', 'memberNames', 'currency', 'inviteCode', 'createdAt'])
+        && data.memberIds is list && data.memberIds.size() >= 1 && data.memberIds.size() <= 2
+        && data.memberIds.toSet().size() == data.memberIds.size()
+        && data.memberNames is map && data.memberNames.keys().hasOnly(data.memberIds)
+        && data.memberNames.keys().hasAll(data.memberIds)
+        && validName(data.memberNames[data.memberIds[0]])
+        && (data.memberIds.size() == 1 || validName(data.memberNames[data.memberIds[1]]))
+        && data.currency in ['BDT', 'USD', 'EUR', 'GBP', 'INR']
+        && data.inviteCode is string && data.inviteCode.matches('^[a-f0-9]{32}$')
+        && data.createdAt is timestamp;
+    }
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['householdId', 'name', 'inviteCode'])
+        && request.resource.data.keys().hasOnly(['householdId', 'name', 'inviteCode'])
+        && request.resource.data.householdId is string && validName(request.resource.data.name)
+        && request.resource.data.inviteCode == getAfter(housePath(request.resource.data.householdId)).data.inviteCode
+        && uid in getAfter(housePath(request.resource.data.householdId)).data.memberIds
+        && getAfter(housePath(request.resource.data.householdId)).data.memberNames[uid] == request.resource.data.name;
+      allow update, delete, list: if false;
+    }
+    match /invites/{code} {
+      // Unguessable 128-bit invitation, get-only, available to authenticated users.
+      // Never allow queries that enumerate invitation codes.
+      allow get: if signedIn();
+      allow create: if signedIn() && code.matches('^[a-f0-9]{32}$')
+        && request.resource.data.keys().hasAll(['householdId', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['householdId', 'ownerId', 'createdAt'])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(housePath(request.resource.data.householdId)).data.memberIds == [request.auth.uid]
+        && getAfter(housePath(request.resource.data.householdId)).data.inviteCode == code;
+      allow list, update, delete: if false;
+    }
+    match /households/{id} {
+      allow read: if member(id);
+      allow create: if signedIn() && validHouse(request.resource.data)
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.createdAt == request.time
+        && !exists(userPath(request.auth.uid))
+        && getAfter(userPath(request.auth.uid)).data.householdId == id
+        && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.householdId == id
+        && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.ownerId == request.auth.uid;
+      allow update: if signedIn() && validHouse(request.resource.data)
+        && resource.data.memberIds.size() == 1
+        && !(request.auth.uid in resource.data.memberIds)
+        && !exists(userPath(request.auth.uid))
+        && request.resource.data.memberIds.size() == 2
+        && request.resource.data.memberIds.hasAll(resource.data.memberIds)
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'memberNames'])
+        && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([request.auth.uid])
+        && getAfter(userPath(request.auth.uid)).data.householdId == id
+        && getAfter(userPath(request.auth.uid)).data.name == request.resource.data.memberNames[request.auth.uid]
+        && getAfter(userPath(request.auth.uid)).data.inviteCode == resource.data.inviteCode
+        && get(/databases/$(database)/documents/invites/$(resource.data.inviteCode)).data.householdId == id;
+      allow delete: if false;
+      match /expenses/{expenseId} {
+        function validExpense(data) {
+          return data.keys().hasAll(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
+            && data.keys().hasOnly(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
+            && data.merchant is string && data.merchant.size() > 0 && data.merchant.size() <= 100
+            && data.payer in get(housePath(id)).data.memberIds
+            && data.createdBy == request.auth.uid && data.createdAt == request.time
+            && data.date is timestamp && data.date >= timestamp.date(2000, 1, 1) && data.date < timestamp.date(2101, 1, 1)
+            && data.month is string && data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+            && data.month == string(data.date.year()) + '-' + (data.date.month() < 10 ? '0' : '') + string(data.date.month())
+            && data.total is int && data.total > 0 && data.total <= 1000000000
+            && data.itemCount is int && data.itemCount >= 0 && data.itemCount <= 100;
+        }
+        allow read: if member(id);
+        allow create: if member(id) && validExpense(request.resource.data);
+        allow update, delete: if false;
+        match /items/{itemId} {
+          function parentPath() { return /databases/$(database)/documents/households/$(id)/expenses/$(expenseId); }
+          allow read: if member(id);
+          allow create: if member(id)
+            && !exists(parentPath())
+            && getAfter(parentPath()).data.createdBy == request.auth.uid
+            && getAfter(parentPath()).data.createdAt == request.time
+            && request.resource.data.keys().hasOnly(['index', 'name', 'amount'])
+            && request.resource.data.index is int && request.resource.data.index >= 0
+            && request.resource.data.index < getAfter(parentPath()).data.itemCount
+            && itemId == string(request.resource.data.index)
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100
+            && request.resource.data.amount is int && request.resource.data.amount >= 0 && request.resource.data.amount <= 1000000000;
+          allow update, delete: if false;
+        }
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

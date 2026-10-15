@@ -1,0 +1,24 @@
+name: Firestore security rules
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tool/rules-tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+        working-directory: tool/rules-tests
+      - run: npx firebase emulators:exec --only firestore --project demo-bashahisab --config ../../firebase.json 'node --test rules.test.cjs'
+        working-directory: tool/rules-tests
