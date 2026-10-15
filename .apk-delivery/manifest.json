@@ -1,0 +1,43 @@
+{
+  "source_commit": "33e774d29e7658e62ccac3908f1e4840eea4192d",
+  "assets": [
+    {
+      "name": "BashaHisab-debug.apk",
+      "sha256": "7b95903ee438b1ec861da6e0a37d3203e922806cf82addd020a4bd8490754b65",
+      "bytes": 181153413,
+      "parts": [
+        {
+          "name": "debug.part-000",
+          "sha256": "3913d349ed471a69425364594c5af914563eaf746919324e9fcfc67208f66335"
+        },
+        {
+          "name": "debug.part-001",
+          "sha256": "c1a868e731058712234c30b65aac398828a2f15082435686184f4202d6bdace4"
+        },
+        {
+          "name": "debug.part-002",
+          "sha256": "05bbd640be84fbefd955fda2a844f0c2122bd7e83be46c006215fd9dd321b174"
+        },
+        {
+          "name": "debug.part-003",
+          "sha256": "8a1bee0a9e93c6ff836e81fe3f728dd4c2447aa03e39b8cfb3cab5d3463078c0"
+        }
+      ]
+    },
+    {
+      "name": "BashaHisab-release-test.apk",
+      "sha256": "78582e628da11187c26b97185e79d6d17557b36fb83548e156a4feb18209113a",
+      "bytes": 82646333,
+      "parts": [
+        {
+          "name": "release.part-000",
+          "sha256": "9c8ac1e6dd9ca846366548256b4203ae5f9e932a41dff96c27ab7eba49306f07"
+        },
+        {
+          "name": "release.part-001",
+          "sha256": "f2ae71b6ccbd0bf5cedf61e7f54cdd8c86294750c641c86d418a89beacc4e120"
+        }
+      ]
+    }
+  ]
+}
