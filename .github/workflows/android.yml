@@ -157,3 +157,20 @@ jobs:
           fi
           echo 'Artifact fallback: ${{ steps.artifact.outputs.artifact-url }}' >> "$GITHUB_STEP_SUMMARY"
           echo 'Both APKs are the existing verified builds, not rebuilds. Release-test is debug-signed for testing only.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Record delivery outcome on the temporary transfer branch
+        if: always() && steps.artifact.outcome == 'success'
+        env:
+          RELEASE_OUTCOME: ${{ steps.release.outcome }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        shell: bash
+        run: |
+          {
+            printf 'release_outcome=%s\nartifact_url=%s\nrun_url=https://github.com/%s/actions/runs/%s\n' "$RELEASE_OUTCOME" "$ARTIFACT_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            if [ -n "$GH_TOKEN" ]; then echo 'release_auth_present=yes'; else echo 'release_auth_present=no'; fi
+            if [ -f "$RUNNER_TEMP/release-error.log" ]; then tail -n 20 "$RUNNER_TEMP/release-error.log"; fi
+          } > .apk-delivery/release-status.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .apk-delivery/release-status.txt
+          git commit -m '[delivery-status] Record verified APK publication outcome'
+          git push origin HEAD:refs/heads/delivery/prebuilt-apk
