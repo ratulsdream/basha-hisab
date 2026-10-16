@@ -1,0 +1,62 @@
+name: Download verified BashaHisab v2 APK
+on:
+  push:
+    branches: [delivery/v2-apk]
+permissions:
+  contents: read
+jobs:
+  deliver:
+    if: contains(github.event.head_commit.message, '[deliver-v2]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and reassemble the already-built APK
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, re
+          from pathlib import Path
+          source = Path('.v2-apk-delivery')
+          manifest = json.loads((source / 'manifest.json').read_text())
+          assert re.fullmatch('[a-f0-9]{40}', manifest['source_commit'])
+          assert manifest['name'] == 'BashaHisab-v2-debug.apk'
+          target = Path('download')
+          target.mkdir()
+          digest = hashlib.sha256()
+          with (target / manifest['name']).open('wb') as output:
+              for part in manifest['parts']:
+                  assert re.fullmatch(r'debug\.part-[0-9]{3}', part['name'])
+                  data = (source / part['name']).read_bytes()
+                  assert hashlib.sha256(data).hexdigest() == part['sha256']
+                  digest.update(data)
+                  output.write(data)
+          assert digest.hexdigest() == manifest['sha256']
+          assert (target / manifest['name']).stat().st_size == manifest['bytes']
+          (target / 'BUILD-INFO.json').write_text(json.dumps(manifest, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        id: apk
+        with:
+          name: BashaHisab-v2-debug
+          path: download/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Record download URL
+        env:
+          ARTIFACT_URL: ${{ steps.apk.outputs.artifact-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          result = 'artifact_url=' + os.environ['ARTIFACT_URL'] + '\nrun_url=' + os.environ['RUN_URL'] + '\n'
+          Path('.v2-apk-delivery/status.txt').write_text(result)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Download the verified v2 APK: ' + os.environ['ARTIFACT_URL'] + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .v2-apk-delivery/status.txt
+          git commit -m '[delivery-status] Record v2 APK download URL'
+          git push origin HEAD:delivery/v2-apk

@@ -1,16 +1,33 @@
-# BashaHisab
+# BashaHisab v2
 
-A Flutter Android/iOS app for **two roommates** sharing one household. Sign in with email/password, create a household, invite your roommate with a private code, and track shared spending in real time.
+Flutter Android/iOS shared expenses, upgraded in place from v1. Personal Firebase
+Email/Password accounts can belong to multiple Groups / Homes. Each new group
+currently holds two roommates and uses equal splitting. Existing Firestore
+expenses remain at their original paths.
+
+**Before installing: read [v2 migration/deployment steps](docs/V2_MIGRATION.md).**
+Deploy the new Firestore rules first. Production rules/data are not automatically
+changed by building the app.
 
 ## Features
 
-- Firebase Email/Password sign-up, sign-in, sign-out, and password reset.
-- One immutable household per account, with at most two members. The first member can add expenses while waiting for their roommate.
-- Manual expense entry or a camera/gallery receipt processed **on the device** using bundled Google ML Kit Latin text recognition. No Firebase Storage, image uploads, or cloud OCR.
-- Mandatory receipt review/edit screen with merchant, date, payer, items, and total. Confirm corrections before saving. Item/total differences require explicit confirmation; taxes and discounts may explain them.
-- Monthly spending, each roommate's paid amount and 50% share, precise who-owes-whom calculation, and expense history/details.
-- Integer minor units for money. For an odd cent, the lexicographically first account ID receives the extra cent of the share; both shares add up exactly.
-- Live Firestore streams, loading/error/retry states, and a cached-data indicator. Household operations require connectivity. Expense saves wait for server acknowledgement; keep the save screen open until connectivity returns.
+- Permanent personal profile, create/join/leave homes, group switching, private
+  invite copy/share, and last selection remembered per account.
+- Auth session persistence, trimmed/lowercase email, guarded submissions, timeout,
+  one retry of transient network failures, password reset and partial-registration
+  recovery. The signed-in shell appears before Firestore profile work completes.
+- Offline Greek + English Tesseract OCR with bundled Modern Greek ell and English
+  eng models on Android/iOS. EXIF correction, bounded resizing, grayscale,
+  contrast normalization and sharpening run off the UI isolate. Original/enhanced
+  passes are scored; duplicate item lists are never blindly concatenated.
+- Review every scan before saving. Raw text from both passes, uncertain-field
+  warnings, editable items, and items-sum/total comparison. Greek/English total,
+  tax/payment vocabulary, European dates and European/US money formats.
+- Live monthly spending/history, paid amounts, equal shares and debt transfers.
+  Departed payer names and original expense participants are retained.
+- Receipts stay local: no Firebase Storage, image upload or normal cloud OCR.
+- Separate auth, groups/profile, receipt and expense features; append-only expense
+  and item data with tested Firestore membership rules.
 
 ## Local setup
 
@@ -58,52 +75,62 @@ flutter build apk --release
 
 The release build currently uses **debug signing for release testing only**. Configure a private production keystore and signing configuration before Play Store distribution. For iOS, open `ios/Runner.xcworkspace`, set your Apple development team, run `pod install` in `ios/`, and build/run using a physical device. Camera and photo usage descriptions are included. Linux cannot build or sign iOS apps.
 
-## Use with your roommate
+## Use
 
-1. Both people create their own account.
-2. One person chooses **Create**, enters a name and the household currency, then copies the invitation code.
-3. The other person chooses **Join**, enters their own name, and pastes the code.
-4. Tap **Add expense**, choose manual/camera/gallery, select who paid, and review/save.
-5. Use the month arrows to view monthly spending and history. Settlement reports the reimbursement required for equal expense sharing; it does not record transfers or perform payments.
+1. Sign up or sign in with your existing email/password.
+2. On **My Groups / Homes**, choose **Create group** or **Join with invite code**.
+3. Use the profile icon to edit your personal display name. Share the invite from
+   the home screen. Use **Switch group** to return to your homes.
+4. Tap **Add expense** for manual entry, camera or gallery. Review and confirm OCR
+   before saving; use whole line totals including quantity.
+5. Browse months and settlement. Leaving preserves all group history and your
+   account, but removes your access. Rejoining requires a valid invitation.
 
-Currency is fixed for the household; no exchange-rate conversion is performed. Items are optional and prices represent whole line totals, including quantity. Expenses are append-only in this version. Membership/name changes, leaving a household, and expense edits/deletions are not exposed. Contact your Firebase administrator if incorrect data needs correction.
+Currency stays fixed; there is no exchange-rate conversion. Expenses are
+append-only, and reimbursement transfers are displayed rather than recorded as
+payments. OCR remains a suggestion and depends on image quality. Moderate deskew
+is not attempted automatically because rotating a faint receipt can destroy text.
 
-OCR accuracy depends on receipt quality. Latin-script recognition is supported; Bengali and other unsupported scripts require manual entry. ISO `YYYY-MM-DD` and day-first `DD/MM/YYYY` / `DD-MM-YYYY` dates are suggested. Ambiguous dates, unrecognized totals, discounts, quantities, and mixed layouts require review. Images are processed locally and may remain in platform-managed camera/picker cache; only the structured expense fields go to Firestore.
-
-## Verification
-
-See [the current verification report](docs/VERIFICATION.md) for verified APKs, checks actually run, and the cloud-only build exclusions caused by an outbound proxy failure.
+## Checks and APKs
 
 ```sh
-dart format lib test
+flutter pub get --enforce-lockfile
+dart format --output=none --set-exit-if-changed lib test packages/local_receipt_ocr/lib
 flutter analyze
 flutter test
+python3 tool/ocr_smoke.py # optional native smoke test, needs Tesseract 4+
 cd tool/rules-tests
 npm ci
 npm test
 ```
 
-Dart tests exercise money validation, both settlement directions, equal/zero spending, odd cents, incomplete households, OCR extraction, and sign-in/setup-error screens. Firestore emulator tests exercise atomic creation/joining, simultaneous joins, third-member rejection, cross-household isolation, invitation enumeration denial, forged expenses, and membership immutability. Emulator tests use the `demo-bashahisab` project and never production data.
+Android CI checks format/analyze/tests, builds debug and release-test APKs, and
+uploads artifacts. Set repository Actions secret GOOGLE_SERVICES_JSON to the raw
+Android Firebase config, then Actions → Android APK → Run workflow. Download
+BashaHisab-debug-… from the successful run's Artifacts, extract the ZIP, and tap
+the APK. The release-test build uses debug signing, not a production store key.
+A separate workflow runs the Firestore emulator tests without production access.
 
-For device acceptance, use two actual accounts/devices: add an expense on each, verify both dashboards/history sync, confirm reversed payer totals and an odd-cent split, scan a real receipt from camera and gallery, correct its OCR, and verify the reviewed fields are saved. Test rejected permissions, airplane mode/reconnection, password reset, and signing out/in. Do not infer these device results from unit tests.
+Read [v2 migration](docs/V2_MIGRATION.md), [verification](docs/VERIFICATION_V2.md),
+[native OCR implementation](packages/local_receipt_ocr/README.md), and
+[third-party notices](THIRD_PARTY_NOTICES.md). Physical camera/gallery, two-device
+sync and iOS builds require device/Mac acceptance checks; unit tests do not claim
+those results. The v1 verification report remains under docs for historical use.
 
-## GitHub Actions APK artifacts
+## Firestore schema
 
-`.github/workflows/android.yml` runs Flutter checks, builds **debug** and **release-test** APKs, and uploads each as a workflow artifact retained for 14 days. After pushing the committed code:
+- users/{uid}: uid, email, displayName, createdAt, updatedAt; optional immutable
+  legacy identity hints and a one-time migration marker.
+- users/{uid}/memberships/{groupId} and households/{groupId}/members/{uid}:
+  paired uid, groupId, displayName, joinedAt, inviteCode records.
+- households/{groupId}: title, maxMembers (2), active memberIds, historical
+  memberNames, currency, inviteCode, createdAt; optional frozen legacyMemberIds.
+- invites/{128-bit-code}: householdId, ownerId, createdAt; authenticated get only.
+- households/{groupId}/expenses/{expenseId}: unchanged v1 fields, with optional
+  additive splitBetween on v2 expenses. Items remain in items/{index}.
 
-1. In repository **Settings → Secrets and variables → Actions**, add a secret named **`GOOGLE_SERVICES_JSON`** containing the complete raw contents of your Android config file (not base64).
-2. Open **Actions → Android APK → Run workflow** or push to `main`.
-3. Download `BashaHisab-debug-…` / `BashaHisab-release-test-…` from the run's **Artifacts**.
-
-The APK jobs deliberately fail with a clear message if the config secret is missing; they never build against a fake Firebase project. Fork PRs do not receive repository secrets. Checks can still run independently. A separate workflow runs Firestore security tests using the local emulator without credentials.
-
-## Firestore layout and access
-
-- `users/{uid}`: the user's name, household ID, and invitation proof; private to that account.
-- `households/{id}`: fixed currency, two-member limit, names, and private invitation code; readable only by members.
-- `invites/{128-bit-code}`: household ID and owner; authenticated document-get only, no listing. Treat the code as private until the roommate joins.
-- `households/{id}/expenses/{id}`: merchant, payer, UTC calendar date, month key, integer total, item count, creator, and server creation timestamp.
-
-- `households/{id}/expenses/{id}/items/{index}`: individual item names and integer prices; saved atomically with the expense (up to 100 items). Separate item documents allow every item to be validated within Firestore’s rules budget.
-
-Rules validate payload fields/types, month/date consistency, item contents and limits, household payer/creator membership, atomic invitation-based joining, and single-household membership. Images, OCR raw text, extra fields, third members, and expense updates/deletes are denied. Members can record an expense paid by either roommate. Administrators with server credentials bypass Firestore rules; protect that access separately.
+Private profile/membership lists belong to their owner. Only active group members
+read group data. Joining, leaving and paired records are enforced atomically;
+third-member additions, ID-only joins, forged creators/payers and image/raw-text
+fields on expenses are rejected. Max-member limits are explicit in the data
+layer so a later product version can expand them with corresponding rules.

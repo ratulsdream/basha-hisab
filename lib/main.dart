@@ -1,10 +1,22 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'screens.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    for (final name in ['Tesseract', 'Leptonica', 'Tesseract4Android']) {
+      yield LicenseEntryWithLineBreaks([
+        name,
+      ], await rootBundle.loadString('assets/licenses/$name.txt'));
+    }
+    yield LicenseEntryWithLineBreaks([
+      'tessdata_fast Greek and English',
+    ], await rootBundle.loadString('assets/tessdata/LICENSE'));
+  });
   Object? initializationError;
   try {
     // Native Firebase configs are injected by the developer or CI, never Storage.

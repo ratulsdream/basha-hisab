@@ -4,74 +4,135 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
     function housePath(id) { return /databases/$(database)/documents/households/$(id); }
+    function minePath(uid, id) { return /databases/$(database)/documents/users/$(uid)/memberships/$(id); }
+    function memberPath(id, uid) { return /databases/$(database)/documents/households/$(id)/members/$(uid); }
+    function invitePath(code) { return /databases/$(database)/documents/invites/$(code); }
+    // memberIds remains the atomic authority, including unmigrated v1 members.
+    // Only the paired membership operations below may change this array.
     function member(id) {
       return signedIn() && request.auth.uid in get(housePath(id)).data.memberIds;
     }
     function validName(value) { return value is string && value.size() > 0 && value.size() <= 50; }
+    function capacity(data) { return data.get('maxMembers', 2); }
     function validHouse(data) {
-      return data.keys().hasAll(['memberIds', 'memberNames', 'currency', 'inviteCode', 'createdAt'])
-        && data.keys().hasOnly(['memberIds', 'memberNames', 'currency', 'inviteCode', 'createdAt'])
-        && data.memberIds is list && data.memberIds.size() >= 1 && data.memberIds.size() <= 2
+      return data.keys().hasAll(['memberIds','memberNames','currency','inviteCode','createdAt'])
+        && data.keys().hasOnly(['memberIds','memberNames','currency','inviteCode','createdAt','title','maxMembers','legacyMemberIds'])
+        && data.memberIds is list && data.memberIds.size() <= capacity(data)
+        && capacity(data) is int && capacity(data) == 2
         && data.memberIds.toSet().size() == data.memberIds.size()
-        && data.memberNames is map && data.memberNames.keys().hasOnly(data.memberIds)
-        && data.memberNames.keys().hasAll(data.memberIds)
-        && validName(data.memberNames[data.memberIds[0]])
-        && (data.memberIds.size() == 1 || validName(data.memberNames[data.memberIds[1]]))
-        && data.currency in ['BDT', 'USD', 'EUR', 'GBP', 'INR']
+        && data.memberNames is map && data.memberNames.keys().hasAll(data.memberIds)
+        && data.currency in ['BDT','USD','EUR','GBP','INR']
         && data.inviteCode is string && data.inviteCode.matches('^[a-f0-9]{32}$')
-        && data.createdAt is timestamp;
+        && data.createdAt is timestamp
+        && (!('title' in data) || validName(data.title))
+        && (!('legacyMemberIds' in data) || (data.legacyMemberIds is list && data.legacyMemberIds.size() >= 1 && data.legacyMemberIds.size() <= 2 && data.memberNames.keys().hasAll(data.legacyMemberIds)));
+    }
+    function validProfile(data, uid) {
+      return data.keys().hasAll(['uid','email','displayName','createdAt','updatedAt'])
+        && data.keys().hasOnly(['uid','email','displayName','createdAt','updatedAt','householdId','name','inviteCode','legacyMembershipMigrated'])
+        && data.uid == uid && data.email is string && data.email.size() <= 320
+        && data.email == request.auth.token.email
+        && validName(data.displayName) && data.createdAt is timestamp
+        && data.updatedAt == request.time;
+    }
+    function validMembership(data, uid, id) {
+      return data.keys().hasAll(['uid','groupId','displayName','joinedAt','inviteCode'])
+        && data.keys().hasOnly(['uid','groupId','displayName','joinedAt','inviteCode'])
+        && data.uid == uid && data.groupId == id && validName(data.displayName)
+        && data.joinedAt == request.time
+        && data.inviteCode == getAfter(housePath(id)).data.inviteCode
+        && uid in getAfter(housePath(id)).data.memberIds;
+    }
+    function pairedMembership(uid, id) {
+      return getAfter(minePath(uid, id)).data == getAfter(memberPath(id, uid)).data;
     }
     match /users/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasAll(['householdId', 'name', 'inviteCode'])
-        && request.resource.data.keys().hasOnly(['householdId', 'name', 'inviteCode'])
-        && request.resource.data.householdId is string && validName(request.resource.data.name)
-        && request.resource.data.inviteCode == getAfter(housePath(request.resource.data.householdId)).data.inviteCode
-        && uid in getAfter(housePath(request.resource.data.householdId)).data.memberIds
-        && getAfter(housePath(request.resource.data.householdId)).data.memberNames[uid] == request.resource.data.name;
-      allow update, delete, list: if false;
+        && validProfile(request.resource.data, uid)
+        && request.resource.data.createdAt == request.time
+        && !request.resource.data.keys().hasAny(['householdId','name','inviteCode','legacyMembershipMigrated']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && validProfile(request.resource.data, uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid','email','displayName','createdAt','updatedAt','legacyMembershipMigrated'])
+        && (!('createdAt' in resource.data) ? request.resource.data.createdAt == request.time : request.resource.data.createdAt == resource.data.createdAt)
+        && (!('legacyMembershipMigrated' in request.resource.data) || request.resource.data.legacyMembershipMigrated == true);
+      allow delete, list: if false;
+      match /memberships/{id} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && validMembership(request.resource.data, uid, id) && pairedMembership(uid, id);
+        allow delete: if signedIn() && request.auth.uid == uid
+          && !(uid in getAfter(housePath(id)).data.memberIds)
+          && !existsAfter(memberPath(id, uid));
+        allow update: if false;
+      }
     }
     match /invites/{code} {
-      // Unguessable 128-bit invitation, get-only, available to authenticated users.
-      // Never allow queries that enumerate invitation codes.
+      // 128-bit bearer invitation, get-only; never permit enumeration.
       allow get: if signedIn();
       allow create: if signedIn() && code.matches('^[a-f0-9]{32}$')
-        && request.resource.data.keys().hasAll(['householdId', 'ownerId', 'createdAt'])
-        && request.resource.data.keys().hasOnly(['householdId', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasAll(['householdId','ownerId','createdAt'])
+        && request.resource.data.keys().hasOnly(['householdId','ownerId','createdAt'])
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.createdAt == request.time
+        && !exists(housePath(request.resource.data.householdId))
         && getAfter(housePath(request.resource.data.householdId)).data.memberIds == [request.auth.uid]
         && getAfter(housePath(request.resource.data.householdId)).data.inviteCode == code;
       allow list, update, delete: if false;
     }
     match /households/{id} {
-      allow read: if member(id);
+      allow get: if member(id);
+      allow list: if false;
       allow create: if signedIn() && validHouse(request.resource.data)
         && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.memberNames.keys().hasOnly([request.auth.uid])
+        && validName(request.resource.data.memberNames[request.auth.uid])
+        && request.resource.data.get('maxMembers', 0) == 2
+        && !('legacyMemberIds' in request.resource.data)
         && request.resource.data.createdAt == request.time
-        && !exists(userPath(request.auth.uid))
-        && getAfter(userPath(request.auth.uid)).data.householdId == id
-        && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.householdId == id
-        && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.ownerId == request.auth.uid;
-      allow update: if signedIn() && validHouse(request.resource.data)
-        && resource.data.memberIds.size() == 1
-        && !(request.auth.uid in resource.data.memberIds)
-        && !exists(userPath(request.auth.uid))
-        && request.resource.data.memberIds.size() == 2
-        && request.resource.data.memberIds.hasAll(resource.data.memberIds)
-        && request.auth.uid in request.resource.data.memberIds
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'memberNames'])
-        && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([request.auth.uid])
-        && getAfter(userPath(request.auth.uid)).data.householdId == id
-        && getAfter(userPath(request.auth.uid)).data.name == request.resource.data.memberNames[request.auth.uid]
-        && getAfter(userPath(request.auth.uid)).data.inviteCode == resource.data.inviteCode
-        && get(/databases/$(database)/documents/invites/$(resource.data.inviteCode)).data.householdId == id;
+        && exists(userPath(request.auth.uid))
+        && pairedMembership(request.auth.uid, id)
+        && getAfter(minePath(request.auth.uid, id)).data.inviteCode == request.resource.data.inviteCode
+        && getAfter(invitePath(request.resource.data.inviteCode)).data.householdId == id
+        && getAfter(invitePath(request.resource.data.inviteCode)).data.ownerId == request.auth.uid;
+      allow update: if signedIn() && validHouse(request.resource.data) && (
+        // Join: atomically add only oneself with the real invite and paired records.
+        (!(request.auth.uid in resource.data.memberIds)
+          && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+          && request.resource.data.memberIds.hasAll(resource.data.memberIds)
+          && request.auth.uid in request.resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds','memberNames'])
+          && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([request.auth.uid])
+          && validName(request.resource.data.memberNames[request.auth.uid])
+          && pairedMembership(request.auth.uid, id)
+          && getAfter(minePath(request.auth.uid, id)).data.inviteCode == resource.data.inviteCode
+          && getAfter(minePath(request.auth.uid, id)).data.displayName == request.resource.data.memberNames[request.auth.uid]
+          && get(invitePath(resource.data.inviteCode)).data.householdId == id)
+        ||
+        // Leave: preserve names and all expenses, remove both access records.
+        (request.auth.uid in resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds','legacyMemberIds'])
+          && (('legacyMemberIds' in resource.data) ? request.resource.data.legacyMemberIds == resource.data.legacyMemberIds : request.resource.data.legacyMemberIds == resource.data.memberIds)
+          && request.resource.data.memberIds == resource.data.memberIds.removeAll([request.auth.uid])
+          && !existsAfter(minePath(request.auth.uid, id))
+          && !existsAfter(memberPath(id, request.auth.uid)))
+      );
       allow delete: if false;
+      match /members/{uid} {
+        allow read: if member(id);
+        allow create: if signedIn() && request.auth.uid == uid
+          && validMembership(request.resource.data, uid, id) && pairedMembership(uid, id);
+        allow delete: if signedIn() && request.auth.uid == uid
+          && !(uid in getAfter(housePath(id)).data.memberIds)
+          && !existsAfter(minePath(uid, id));
+        allow update: if false;
+      }
       match /expenses/{expenseId} {
         function validExpense(data) {
           return data.keys().hasAll(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
-            && data.keys().hasOnly(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
+            && data.keys().hasOnly(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt','splitBetween'])
+            && (!('splitBetween' in data) || (data.splitBetween is list && data.splitBetween.size() == get(housePath(id)).data.memberIds.size() && data.splitBetween.toSet() == get(housePath(id)).data.memberIds.toSet()))
             && data.merchant is string && data.merchant.size() > 0 && data.merchant.size() <= 100
             && data.payer in get(housePath(id)).data.memberIds
             && data.createdBy == request.auth.uid && data.createdAt == request.time

@@ -1,7 +1,7 @@
 name: basha_hisab
 description: Shared household expenses for two roommates.
 publish_to: none
-version: 1.0.0+1
+version: 2.0.0+2
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:
@@ -11,11 +11,22 @@ dependencies:
   firebase_auth: 6.7.0
   cloud_firestore: 6.10.0
   image_picker: ^1.1.2
-  google_mlkit_text_recognition: ^0.15.0
+  local_receipt_ocr:
+    path: packages/local_receipt_ocr
+  image: ^4.5.4
+  path_provider: ^2.1.5
+  shared_preferences: ^2.5.3
+  share_plus: ^12.0.1
   intl: ^0.20.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  fake_cloud_firestore:
+    path: tool/test_support/fake_cloud_firestore
+  firebase_auth_mocks: ^0.15.1
 flutter:
   uses-material-design: true
+  assets:
+    - assets/tessdata/
+    - assets/licenses/

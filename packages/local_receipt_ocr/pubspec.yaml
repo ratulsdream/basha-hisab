@@ -1,0 +1,17 @@
+name: local_receipt_ocr
+description: Offline Greek and English Tesseract bridge for BashaHisab.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.bashahisab.ocr
+        pluginClass: LocalReceiptOcrPlugin
+      ios:
+        pluginClass: LocalReceiptOcrPlugin

@@ -2,24 +2,44 @@ const { readFileSync } = require('node:fs');
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, getDoc, getDocs, collection, writeBatch, arrayUnion, serverTimestamp, Timestamp } = require('firebase/firestore');
+const { doc, setDoc, getDoc, getDocs, collection, writeBatch, arrayUnion, arrayRemove, serverTimestamp, Timestamp } = require('firebase/firestore');
 let env;
 const code = '0123456789abcdef0123456789abcdef';
-const db = uid => env.authenticatedContext(uid).firestore();
+const db = uid => env.authenticatedContext(uid, {email: `${uid}@example.com`}).firestore();
 const profile = (database, uid) => doc(database, 'users', uid);
 const house = database => doc(database, 'households', 'home');
-async function createHome(uid = 'alice') {
+function person(uid) {
+  return {uid, email: `${uid}@example.com`, displayName: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp()};
+}
+function record(uid, id = 'home', inviteCode = code) {
+  return {uid, groupId: id, displayName: uid, inviteCode, joinedAt: serverTimestamp()};
+}
+function pair(batch, database, uid, id = 'home', inviteCode = code) {
+  const data = record(uid, id, inviteCode);
+  batch.set(doc(database, `users/${uid}/memberships/${id}`), data);
+  batch.set(doc(database, `households/${id}/members/${uid}`), data);
+}
+async function createHome(uid = 'alice', id = 'home', inviteCode = code) {
   const database = db(uid);
+  if (!(await getDoc(profile(database, uid))).exists()) await setDoc(profile(database, uid), person(uid));
   const batch = writeBatch(database);
-  batch.set(house(database), {memberIds: [uid], memberNames: {[uid]: 'Alice'}, currency: 'BDT', inviteCode: code, createdAt: serverTimestamp()});
-  batch.set(profile(database, uid), {householdId: 'home', name: 'Alice', inviteCode: code});
-  batch.set(doc(database, 'invites', code), {householdId: 'home', ownerId: uid, createdAt: serverTimestamp()});
+  batch.set(doc(database, 'households', id), {title: 'Our home', maxMembers: 2, memberIds: [uid], memberNames: {[uid]: uid}, currency: 'EUR', inviteCode, createdAt: serverTimestamp()});
+  pair(batch, database, uid, id, inviteCode);
+  batch.set(doc(database, 'invites', inviteCode), {householdId: id, ownerId: uid, createdAt: serverTimestamp()});
   return batch.commit();
 }
-async function join(uid, name = uid) {
+async function join(uid, id = 'home', inviteCode = code) {
   const database = db(uid), batch = writeBatch(database);
-  batch.update(house(database), {memberIds: arrayUnion(uid), [`memberNames.${uid}`]: name});
-  batch.set(profile(database, uid), {householdId: 'home', name, inviteCode: code});
+  batch.update(doc(database, 'households', id), {memberIds: arrayUnion(uid), [`memberNames.${uid}`]: uid});
+  pair(batch, database, uid, id, inviteCode);
+  return batch.commit();
+}
+async function leave(uid) {
+  const database = db(uid), batch = writeBatch(database);
+  const data = (await getDoc(house(database))).data();
+  batch.update(house(database), {memberIds: arrayRemove(uid), legacyMemberIds: data.legacyMemberIds ?? data.memberIds});
+  batch.delete(doc(database, `users/${uid}/memberships/home`));
+  batch.delete(doc(database, `households/home/members/${uid}`));
   return batch.commit();
 }
 function expense(overrides = {}) {
@@ -65,18 +85,69 @@ test('forged creator, payer, amount, month, and image fields are denied', async 
     await assertFails(setDoc(doc(db('alice'), `households/home/expenses/bad${i}`), expense(changes[i])));
   }
 });
-test('membership cannot be removed, renamed, or moved to another household', async () => {
-  await createHome(); await join('bob');
-  await assertFails(setDoc(profile(db('bob'), 'bob'), {householdId: 'other', name: 'Bob'}));
-  const database = db('bob');
-  const batch = writeBatch(database);
-  batch.update(house(database), {memberIds: ['bob']});
-  await assertFails(batch.commit());
-  await assertFails(createHome('bob'));
+test('personal profile exists independently and supports safe recovery and updates', async () => {
+  const database = db('alice');
+  await assertSucceeds(setDoc(profile(database, 'alice'), person('alice')));
+  await assertSucceeds(setDoc(profile(database, 'alice'), {displayName: 'Alice Smith', updatedAt: serverTimestamp()}, {merge: true}));
+  await assertFails(setDoc(profile(db('bob'), 'alice'), person('bob')));
+  await assertFails(setDoc(profile(database, 'alice'), {householdId: 'forged'}, {merge: true}));
+  await assertFails(setDoc(profile(database, 'alice'), {createdAt: Timestamp.fromMillis(1), updatedAt: serverTimestamp()}, {merge: true}));
 });
-test('a profile or household cannot be created alone', async () => {
-  await assertFails(setDoc(profile(db('alice'), 'alice'), {householdId: 'home', name: 'Alice', inviteCode: code}));
-  await assertFails(setDoc(house(db('alice')), {memberIds: ['alice'], memberNames: {alice: 'Alice'}, currency: 'BDT', inviteCode: code, createdAt: serverTimestamp()}));
+test('a user can belong to multiple homes, and membership does not grant other users access', async () => {
+  await createHome();
+  await createHome('alice', 'second', 'a'.repeat(32));
+  const snapshot = await assertSucceeds(getDocs(collection(db('alice'), 'users/alice/memberships')));
+  assert.equal(snapshot.size, 2);
+  await assertFails(getDocs(collection(db('bob'), 'users/alice/memberships')));
+  await assertFails(getDoc(doc(db('bob'), 'households/second')));
+});
+test('leave revokes access, preserves expenses and profile, and allows invited rejoin', async () => {
+  await createHome(); await join('bob');
+  await setDoc(doc(db('alice'), 'households/home/expenses/old'), expense());
+  await assertSucceeds(leave('alice'));
+  await assertFails(getDoc(house(db('alice'))));
+  await assertFails(getDocs(collection(db('alice'), 'households/home/expenses')));
+  assert.equal((await getDocs(collection(db('bob'), 'households/home/expenses'))).size, 1);
+  await assertSucceeds(getDoc(profile(db('alice'), 'alice')));
+  await assertSucceeds(join('alice'));
+});
+test('forged memberships, unpaired records, and removal of other members fail', async () => {
+  await createHome();
+  await assertFails(setDoc(doc(db('bob'), 'users/bob/memberships/home'), record('bob')));
+  const database = db('bob'), batch = writeBatch(database);
+  pair(batch, database, 'bob');
+  await assertFails(batch.commit());
+  await assertFails(setDoc(doc(db('bob'), 'households/home/members/alice'), record('alice')));
+  await join('bob');
+  await assertFails(setDoc(house(db('bob')), {memberIds: ['bob']}, {merge: true}));
+  await assertFails(setDoc(doc(db('alice'), 'households/home/members/alice'), {displayName: 'Other'}, {merge: true}));
+  await assertFails(setDoc(house(db('alice')), {maxMembers: 100}, {merge: true}));
+});
+test('legacy account migrates paired memberships without touching expenses', async () => {
+  await env.withSecurityRulesDisabled(async context => {
+    const database = context.firestore();
+    await setDoc(profile(database, 'alice'), {householdId: 'home', name: 'alice', inviteCode: code});
+    await setDoc(house(database), {memberIds: ['alice','bob'], memberNames: {alice: 'alice',bob:'bob'}, currency: 'EUR', inviteCode: code, createdAt: Timestamp.now()});
+    await setDoc(doc(database, 'households/home/expenses/legacy'), {...expense(), createdAt: Timestamp.now()});
+  });
+  const database = db('alice');
+  // Legacy access remains available before either roommate has upgraded.
+  await assertSucceeds(getDoc(doc(db('alice'), 'households/home/expenses/legacy')));
+  await assertSucceeds(getDoc(doc(db('bob'), 'households/home/expenses/legacy')));
+  await assertSucceeds(setDoc(profile(database,'alice'), person('alice'), {merge:true}));
+  const batch = writeBatch(database); pair(batch, database, 'alice');
+  batch.update(profile(database,'alice'), {legacyMembershipMigrated: true, updatedAt: serverTimestamp()});
+  await assertSucceeds(batch.commit());
+  assert.equal((await getDoc(doc(database, 'households/home/expenses/legacy'))).data().total, 250);
+  // Outsiders cannot forge a legacy hint in their profile.
+  await assertFails(setDoc(profile(db('mallory'),'mallory'), {...person('mallory'), householdId:'home'}));
+  await assertFails(join('mallory'));
+});
+test('last member may leave without deleting the home or expenses', async () => {
+  await createHome();
+  await assertSucceeds(leave('alice'));
+  await assertFails(getDoc(house(db('alice'))));
+  await assertSucceeds(join('bob'));
 });
 
 test('100 items are validated atomically without exceeding rule budgets', async () => {
@@ -104,8 +175,21 @@ test('item writes require an atomic new parent and valid types and index', async
 });
 test('knowing a household ID without the invitation code is insufficient', async () => {
   await createHome();
-  const database = db('mallory'), batch = writeBatch(database);
-  batch.update(house(database), {memberIds: arrayUnion('mallory'), 'memberNames.mallory': 'Mallory'});
-  batch.set(profile(database, 'mallory'), {householdId: 'home', name: 'Mallory', inviteCode: 'ffffffffffffffffffffffffffffffff'});
+  await assertFails(join('mallory', 'home', 'f'.repeat(32)));
+});
+test('new expense split participants must be exactly the active members', async () => {
+  await createHome(); await join('bob');
+  await assertSucceeds(setDoc(doc(db('alice'),'households/home/expenses/v2'),expense({splitBetween:['alice','bob']})));
+  for (const [i, splitBetween] of [['alice','mallory'],['alice','alice'],['alice']].entries()) {
+    await assertFails(setDoc(doc(db('alice'),`households/home/expenses/forged-split-${i}`),expense({splitBetween})));
+  }
+});
+test('leaving cannot rewrite the frozen legacy participant pair', async () => {
+  await createHome(); await join('bob');
+  await leave('alice'); await join('charlie');
+  const database = db('bob'), batch = writeBatch(database);
+  batch.update(house(database),{memberIds:['charlie'],legacyMemberIds:['bob','charlie']});
+  batch.delete(doc(database,'users/bob/memberships/home'));
+  batch.delete(doc(database,'households/home/members/bob'));
   await assertFails(batch.commit());
 });

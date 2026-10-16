@@ -1,0 +1,18 @@
+group 'com.bashahisab.ocr'
+version '1.0'
+apply plugin: 'com.android.library'
+android {
+    namespace 'com.bashahisab.ocr'
+    compileSdk 36
+    defaultConfig { minSdk 24 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+// Local AAR is exposed through a flat repository: Android library modules cannot
+// package a direct file-AAR dependency into another AAR.
+rootProject.allprojects {
+    repositories { flatDir { dirs project(':local_receipt_ocr').file('libs') } }
+}
+dependencies { implementation(name: 'tesseract4android-release', ext: 'aar') }
