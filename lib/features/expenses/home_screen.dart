@@ -54,13 +54,9 @@ class _HomeScreenState extends State<HomeScreen> {
         draft = await ReceiptOcr().scan(image.path);
       } catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Receipt could not be read. Check camera/photo permissions or enter the expense manually.',
-              ),
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(receiptScanError(error))));
         }
         return;
       } finally {

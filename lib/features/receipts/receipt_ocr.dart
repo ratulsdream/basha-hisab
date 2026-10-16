@@ -32,10 +32,17 @@ List<Uint8List> preprocessReceipt(Uint8List bytes) {
 }
 
 class ReceiptOcr {
-  ReceiptOcr({LocalReceiptOcr? engine}) : engine = engine ?? LocalReceiptOcr();
+  ReceiptOcr({
+    LocalReceiptOcr? engine,
+    Future<Directory> Function()? supportDirectory,
+    Future<Directory> Function()? temporaryDirectory,
+  }) : engine = engine ?? LocalReceiptOcr(),
+       supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
+       temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory;
   final LocalReceiptOcr engine;
+  final Future<Directory> Function() supportDirectory, temporaryDirectory;
   Future<ReceiptDraft> scan(String inputPath) async {
-    final support = await getApplicationSupportDirectory();
+    final support = await supportDirectory();
     final dataRoot = Directory('${support.path}/ocr-v2');
     final tessdata = Directory('${dataRoot.path}/tessdata');
     await tessdata.create(recursive: true);
@@ -50,8 +57,8 @@ class ReceiptOcr {
         await pending.rename(file.path);
       }
     }
-    final temp = await getTemporaryDirectory();
-    final workspace = await Directory('${temp.path}/receipt-').createTemp();
+    final temp = await temporaryDirectory();
+    final workspace = await temp.createTemp('receipt-');
     try {
       final images = await compute(
         preprocessReceipt,
@@ -78,4 +85,33 @@ class ReceiptOcr {
       await workspace.delete(recursive: true);
     }
   }
+}
+
+/// Do not blame camera permissions for failures that happen after image selection.
+String receiptScanError(Object error) {
+  if (error is FileSystemException) {
+    return 'The receipt could not be prepared on this device. Check free storage and try selecting it again. (scan-files)';
+  }
+  if (error is FormatException) {
+    return 'This image format could not be read. Choose a JPG or PNG photo, or take a new photo. (scan-format)';
+  }
+  if (error is MissingPluginException) {
+    return 'The offline scanner is missing from this installation. Install the latest BashaHisab APK. (scan-plugin)';
+  }
+  if (error is PlatformException) {
+    return switch (error.code) {
+      'camera_access_denied' ||
+      'photo_access_denied' ||
+      'camera_access_restricted' ||
+      'photo_access_restricted' =>
+        'Allow camera/photos access in your phone settings, then try again. (scan-permission)',
+      'ocr-runtime' =>
+        'The offline OCR library could not start on this device. Please report this code and your phone model. (scan-runtime)',
+      'ocr-models' =>
+        'The Greek/English OCR models could not be loaded. Restart the app and retry. (scan-models)',
+      _ =>
+        'The receipt could not be read. Try a clearer photo or enter the expense manually. (scan-ocr)',
+    };
+  }
+  return 'The receipt could not be scanned. Try another photo or enter the expense manually. (scan-unknown)';
 }

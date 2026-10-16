@@ -1,7 +1,7 @@
 name: basha_hisab
 description: Shared household expenses for two roommates.
 publish_to: none
-version: 2.0.0+2
+version: 2.0.1+3
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:

@@ -22,18 +22,24 @@ public final class LocalReceiptOcrPlugin implements FlutterPlugin {
             final String directory = call.argument("dataDirectory");
             if (image == null || directory == null) { result.error("arguments", "Missing image or language data", null); return; }
             worker.execute(() -> {
-                TessBaseAPI engine = new TessBaseAPI();
+                TessBaseAPI engine = null;
                 try {
+                    engine = new TessBaseAPI();
                     if (!engine.init(directory, "ell+eng", TessBaseAPI.OEM_LSTM_ONLY))
-                        throw new IllegalStateException("Could not load bundled Greek/English models");
+                    {
+                        main.post(() -> result.error("ocr-models", "Could not load bundled Greek/English models", null));
+                        return;
+                    }
                     engine.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO);
                     engine.setVariable("preserve_interword_spaces", "1");
                     engine.setImage(new File(image));
                     String text = engine.getUTF8Text();
                     main.post(() -> result.success(text));
+                } catch (LinkageError error) {
+                    main.post(() -> result.error("ocr-runtime", "Offline OCR library unavailable", null));
                 } catch (Exception error) {
                     main.post(() -> result.error("ocr", "Could not recognize this receipt", null));
-                } finally { engine.recycle(); }
+                } finally { if (engine != null) engine.recycle(); }
             });
         });
     }
