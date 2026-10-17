@@ -1,6 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function validCategory(value) { return value in ['uncategorized','food','rice','vegetables','household','utilities','other']; }
+    function validCalendar(data) {
+      return data.date is timestamp && data.date >= timestamp.date(2000,1,1) && data.date < timestamp.date(2101,1,1)
+        && data.month is string && data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && data.month == string(data.date.year()) + '-' + (data.date.month() < 10 ? '0' : '') + string(data.date.month());
+    }
     function signedIn() { return request.auth != null; }
     function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
     function housePath(id) { return /databases/$(database)/documents/households/$(id); }
@@ -58,6 +64,44 @@ service cloud.firestore {
         && (!('createdAt' in resource.data) ? request.resource.data.createdAt == request.time : request.resource.data.createdAt == resource.data.createdAt)
         && (!('legacyMembershipMigrated' in request.resource.data) || request.resource.data.legacyMembershipMigrated == true);
       allow delete, list: if false;
+      match /personalExpenses/{expense} {
+        function owner() { return signedIn() && request.auth.uid == uid; }
+        function validPersonal(data) {
+          return data.keys().hasAll(['merchant','payer','date','month','itemCount','total','createdBy','createdAt','scope','kind','category','groupId'])
+            && data.keys().hasOnly(['merchant','payer','date','month','itemCount','total','createdBy','createdAt','scope','kind','category','groupId'])
+            && data.scope == 'personal' && data.kind in ['expense','refund'] && validCategory(data.category)
+            && data.merchant is string && data.merchant.size() > 0 && data.merchant.size() <= 100
+            && data.payer == uid && data.createdBy == uid && data.createdAt == request.time && validCalendar(data)
+            && data.total is int && data.total > 0 && data.total <= 1000000000 && data.itemCount is int && data.itemCount >= 0 && data.itemCount <= 100
+            && data.groupId is string && member(data.groupId);
+        }
+        allow read: if owner();
+        allow create: if owner() && validPersonal(request.resource.data);
+        allow update, delete: if false;
+        match /items/{line} {
+          function parentPath() { return /databases/$(database)/documents/users/$(uid)/personalExpenses/$(expense); }
+          allow read: if owner();
+          allow create: if owner() && !exists(parentPath()) && getAfter(parentPath()).data.createdBy == uid && getAfter(parentPath()).data.createdAt == request.time
+            && request.resource.data.keys().hasAll(['name','amount','index'])
+            && request.resource.data.keys().hasOnly(['name','amount','index','quantityMilli','unit'])
+            && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100
+            && request.resource.data.amount is int && request.resource.data.amount >= 0 && request.resource.data.amount <= 1000000000
+            && request.resource.data.index is int && request.resource.data.index >= 0 && request.resource.data.index < getAfter(parentPath()).data.itemCount && line == string(request.resource.data.index)
+            && (!('quantityMilli' in request.resource.data) || (request.resource.data.quantityMilli is int && request.resource.data.quantityMilli > 0 && request.resource.data.quantityMilli <= 100000000 && request.resource.data.unit in ['each','g','kg','ml','l']))
+            && (!('unit' in request.resource.data) || 'quantityMilli' in request.resource.data);
+          allow update, delete: if false;
+        }
+      }
+      match /personalReceiptSignatures/{expense} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasAll(['expenseId','signature','imageHash','createdBy','at'])
+          && request.resource.data.keys().hasOnly(['expenseId','signature','imageHash','createdBy','at'])
+          && request.resource.data.expenseId == expense && request.resource.data.createdBy == uid && request.resource.data.at == request.time
+          && request.resource.data.signature.matches('^[a-f0-9]{64}$') && (request.resource.data.imageHash == '' || request.resource.data.imageHash.matches('^[a-f0-9]{64}$'))
+          && exists(/databases/$(database)/documents/users/$(uid)/personalExpenses/$(expense));
+        allow update, delete: if false;
+      }
       match /memberships/{id} {
         allow read: if signedIn() && request.auth.uid == uid;
         allow create: if signedIn() && request.auth.uid == uid
@@ -201,7 +245,7 @@ service cloud.firestore {
           && request.resource.data.itemIndex is int && request.resource.data.itemIndex >= 0
           && purchase == request.resource.data.expenseId + '_' + string(request.resource.data.itemIndex)
           && request.resource.data.name == get(linePath()).data.name
-          && request.resource.data.amount == get(linePath()).data.amount
+          && request.resource.data.amount == (get(sourcePath()).data.get('kind','expense') == 'refund' ? -get(linePath()).data.amount : get(linePath()).data.amount)
           && request.resource.data.merchant == get(sourcePath()).data.merchant
           && request.resource.data.date == get(sourcePath()).data.date
           && request.resource.data.quantityMilli == get(linePath()).data.get('quantityMilli',1000)
@@ -283,6 +327,7 @@ service cloud.firestore {
         allow read: if member(id);
         allow create: if validStock(request.resource.data) && request.resource.data.revision == 0
           && request.resource.data.quantityMilli > 0
+          && get(purchasePath(getAfter(stockEventPath(request.resource.data.lastEvent)).data.purchaseId)).data.amount > 0
           && getAfter(stockEventPath(request.resource.data.lastEvent)).data.kind == 'restock'
           && getAfter(stockEventPath(request.resource.data.lastEvent)).data.lotId == lot
           && getAfter(stockEventPath(request.resource.data.lastEvent)).data.deltaMilli == request.resource.data.quantityMilli
@@ -322,10 +367,82 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      function validBudgetValue(data,key) { return data.get(key,0) is int && data.get(key,0) >= 0 && data.get(key,0) <= 1000000000; }
+      match /budgets/{month} {
+        function validBudget(data) {
+          return month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') && editedByMember(data)
+            && data.keys().hasAll(['total','categories','revision','updatedBy','updatedAt']) && data.keys().hasOnly(['total','categories','revision','updatedBy','updatedAt'])
+            && data.total is int && data.total >= 0 && data.total <= 1000000000 && data.revision is int
+            && data.categories is map && data.categories.keys().hasOnly(['uncategorized','food','rice','vegetables','household','utilities','other'])
+            && validBudgetValue(data.categories,'uncategorized') && validBudgetValue(data.categories,'food') && validBudgetValue(data.categories,'rice')
+            && validBudgetValue(data.categories,'vegetables') && validBudgetValue(data.categories,'household') && validBudgetValue(data.categories,'utilities') && validBudgetValue(data.categories,'other');
+        }
+        allow read: if member(id);
+        allow create: if validBudget(request.resource.data) && request.resource.data.revision == 0;
+        allow update: if validBudget(request.resource.data) && request.resource.data.revision == resource.data.revision + 1;
+        allow delete: if false;
+      }
+      match /payments/{payment} {
+        function validPayment(data) {
+          return member(id) && data.keys().hasAll(['from','to','amount','date','month','reference','reversalOf','createdBy','createdAt'])
+            && data.keys().hasOnly(['from','to','amount','date','month','reference','reversalOf','createdBy','createdAt'])
+            && data.from is string && data.to is string && data.from != data.to
+            && get(housePath(id)).data.memberNames.keys().hasAll([data.from,data.to])
+            && data.amount is int && data.amount > 0 && data.amount <= 1000000000
+            && validCalendar(data) && data.reference is string && data.reference.size() <= 300 && data.reversalOf is string
+            && data.createdBy == request.auth.uid && data.createdAt == request.time;
+        }
+        allow read: if member(id);
+        allow create: if validPayment(request.resource.data) && (
+          (request.resource.data.reversalOf == '' && !payment.matches('^reverse_.*'))
+          || (request.resource.data.reversalOf != '' && payment == 'reverse_' + request.resource.data.reversalOf
+            && request.resource.data.reference.size() > 0
+            && get(/databases/$(database)/documents/households/$(id)/payments/$(request.resource.data.reversalOf)).data.reversalOf == ''
+            && get(/databases/$(database)/documents/households/$(id)/payments/$(request.resource.data.reversalOf)).data.from == request.resource.data.from
+            && get(/databases/$(database)/documents/households/$(id)/payments/$(request.resource.data.reversalOf)).data.to == request.resource.data.to
+            && get(/databases/$(database)/documents/households/$(id)/payments/$(request.resource.data.reversalOf)).data.amount == request.resource.data.amount
+            && get(/databases/$(database)/documents/households/$(id)/payments/$(request.resource.data.reversalOf)).data.month == request.resource.data.month));
+        allow update, delete: if false;
+      }
+      match /recurring/{template} {
+        function validTemplate(data) {
+          return editedByMember(data) && data.keys().hasAll(['merchant','amount','payer','category','day','enabled','revision','updatedBy','updatedAt'])
+            && data.keys().hasOnly(['merchant','amount','payer','category','day','enabled','revision','updatedBy','updatedAt'])
+            && data.merchant is string && data.merchant.size() > 0 && data.merchant.size() <= 100
+            && data.amount is int && data.amount > 0 && data.amount <= 1000000000
+            && data.payer in get(housePath(id)).data.memberIds && category(data.category)
+            && data.day is int && data.day >= 1 && data.day <= 31 && data.enabled is bool && data.revision is int;
+        }
+        allow read: if member(id);
+        allow create: if validTemplate(request.resource.data) && request.resource.data.revision == 0;
+        allow update: if validTemplate(request.resource.data) && request.resource.data.revision == resource.data.revision + 1;
+        allow delete: if false;
+      }
+      function expenseChangePath(expense, revision) { return /databases/$(database)/documents/households/$(id)/expenseChanges/$(expense + '_' + string(revision)); }
+      match /expenseChanges/{change} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['expenseId','revision','before','after','actor','at'])
+          && request.resource.data.keys().hasOnly(['expenseId','revision','before','after','actor','at'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time && request.resource.data.revision is int
+          && change == request.resource.data.expenseId + '_' + string(request.resource.data.revision)
+          && getAfter(/databases/$(database)/documents/households/$(id)/expenses/$(request.resource.data.expenseId)).data.revision == request.resource.data.revision
+          && get(/databases/$(database)/documents/households/$(id)/expenses/$(request.resource.data.expenseId)).data.get('revision',-1) + 1 == request.resource.data.revision;
+        allow update, delete: if false;
+      }
       match /expenses/{expenseId} {
         function validExpense(data) {
           return data.keys().hasAll(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
-            && data.keys().hasOnly(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt','splitBetween'])
+            && data.keys().hasOnly(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt','splitBetween','scope','category','kind','splitCents','recurringId','recurringMonth'])
+            && data.get('scope','shared') == 'shared' && category(data.get('category','uncategorized')) && data.get('kind','expense') in ['expense','refund']
+            && (!('splitCents' in data) || (data.splitCents is map && data.splitCents.keys().hasOnly(get(housePath(id)).data.memberIds) && data.splitCents.keys().hasAll(get(housePath(id)).data.memberIds)
+              && data.splitCents[get(housePath(id)).data.memberIds[0]] is int && data.splitCents[get(housePath(id)).data.memberIds[0]] >= 0
+              && (get(housePath(id)).data.memberIds.size() == 1 || (data.splitCents[get(housePath(id)).data.memberIds[1]] is int && data.splitCents[get(housePath(id)).data.memberIds[1]] >= 0))
+              && data.splitCents[get(housePath(id)).data.memberIds[0]] + (get(housePath(id)).data.memberIds.size() == 1 ? 0 : data.splitCents[get(housePath(id)).data.memberIds[1]]) == data.total))
+            && (!('recurringId' in data) ? !('recurringMonth' in data) : (data.recurringMonth == data.month && expenseId == 'recurring_' + data.recurringId + '_' + data.month
+              && get(/databases/$(database)/documents/households/$(id)/recurring/$(data.recurringId)).data.enabled == true
+              && get(/databases/$(database)/documents/households/$(id)/recurring/$(data.recurringId)).data.merchant == data.merchant
+              && get(/databases/$(database)/documents/households/$(id)/recurring/$(data.recurringId)).data.amount == data.total
+              && get(/databases/$(database)/documents/households/$(id)/recurring/$(data.recurringId)).data.payer == data.payer))
             && (!('splitBetween' in data) || (data.splitBetween is list && data.splitBetween.size() == get(housePath(id)).data.memberIds.size() && data.splitBetween.toSet() == get(housePath(id)).data.memberIds.toSet()))
             && data.merchant is string && data.merchant.size() > 0 && data.merchant.size() <= 100
             && data.payer in get(housePath(id)).data.memberIds
@@ -338,7 +455,13 @@ service cloud.firestore {
         }
         allow read: if member(id);
         allow create: if member(id) && validExpense(request.resource.data);
-        allow update, delete: if false;
+        allow update: if member(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['category','voided','revision','updatedBy','updatedAt'])
+          && category(request.resource.data.category) && request.resource.data.voided is bool
+          && request.resource.data.revision == resource.data.get('revision',-1) + 1 && editedByMember(request.resource.data)
+          && (request.resource.data.voided == resource.data.get('voided',false) || resource.data.createdBy == request.auth.uid)
+          && getAfter(expenseChangePath(expenseId,request.resource.data.revision)).data.before == {'category':resource.data.get('category','uncategorized'),'voided':resource.data.get('voided',false)}
+          && getAfter(expenseChangePath(expenseId,request.resource.data.revision)).data.after == {'category':request.resource.data.category,'voided':request.resource.data.voided};
+        allow delete: if false;
         match /items/{itemId} {
           function parentPath() { return /databases/$(database)/documents/households/$(id)/expenses/$(expenseId); }
           allow read: if member(id);

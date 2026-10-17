@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,9 @@ import 'expense_details.dart';
 import '../receipts/receipt_ocr.dart';
 import '../items/items_screen.dart';
 import '../items/items_repository.dart';
+import '../planning/planning_domain.dart';
+import '../planning/planning_repository.dart';
+import '../planning/planning_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -37,10 +41,65 @@ class _HomeScreenState extends State<HomeScreen> {
   late Stream<QuerySnapshot<Map<String, dynamic>>> _expenses = widget.repository
       .watchExpenses(widget.householdId, _month);
   bool _scanning = false;
-  void _changeMonth(int delta) => setState(() {
-    _month = DateTime(_month.year, _month.month + delta);
-    _expenses = widget.repository.watchExpenses(widget.householdId, _month);
-  });
+  List<Repayment> _payments = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _paymentSubscription;
+  Object? _paymentError;
+  bool _paymentReady = false, _paymentCached = false;
+  @override
+  void initState() {
+    super.initState();
+    _listenPayments();
+  }
+
+  void _listenPayments() {
+    _paymentSubscription?.cancel();
+    if (!widget.repository.enableItemIntelligence) return;
+    _paymentReady = false;
+    _paymentError = null;
+    _payments = [];
+    _paymentSubscription =
+        PlanningRepository(
+              widget.repository.db,
+              widget.repository.uid,
+              widget.householdId,
+            )
+            .collection('payments')
+            .where('month', isEqualTo: monthKey(_month))
+            .snapshots(includeMetadataChanges: true)
+            .listen(
+              (snapshot) {
+                if (mounted) {
+                  setState(() {
+                    _payments = snapshot.docs
+                        .map((d) => paymentFromMap(d.id, d.data()))
+                        .toList();
+                    _paymentReady = true;
+                    _paymentCached =
+                        snapshot.metadata.isFromCache ||
+                        snapshot.metadata.hasPendingWrites;
+                  });
+                }
+              },
+              onError: (Object e) {
+                if (mounted) setState(() => _paymentError = e);
+              },
+            );
+  }
+
+  @override
+  void dispose() {
+    _paymentSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _month = DateTime(_month.year, _month.month + delta);
+      _expenses = widget.repository.watchExpenses(widget.householdId, _month);
+    });
+    _listenPayments();
+  }
+
   Future<void> _add(Household household, {ImageSource? source}) async {
     ReceiptDraft draft = const ReceiptDraft();
     if (source != null) {
@@ -222,6 +281,21 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             if (household != null)
               IconButton(
+                tooltip: 'Planning & settlement',
+                icon: const Icon(Icons.account_balance_wallet_outlined),
+                onPressed: _scanning
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => PlanningScreen(
+                            repository: widget.repository,
+                            household: household,
+                          ),
+                        ),
+                      ),
+              ),
+            if (household != null)
+              IconButton(
                 tooltip: 'Grocery & kitchen',
                 icon: const Icon(Icons.kitchen_outlined),
                 onPressed: _scanning
@@ -334,24 +408,58 @@ class _HomeScreenState extends State<HomeScreen> {
                         final expenses =
                             snapshot.data!.docs
                                 .map((doc) => Expense(doc.id, doc.data()))
+                                .where((expense) => !expense.voided)
                                 .toList()
                               ..sort((a, b) => b.date.compareTo(a.date));
-                        final settlement = calculateGroupSettlement(
-                          household.members,
-                          household.legacyMembers,
-                          expenses.map(
-                            (e) => (
-                              payer: e.payer,
-                              amount: e.total,
-                              splitBetween: e.splitBetween,
-                            ),
-                          ),
-                        );
+                        if (widget.repository.enableItemIntelligence &&
+                            _paymentError != null) {
+                          return RetryMessage(
+                            error: _paymentError!,
+                            retry: () => setState(_listenPayments),
+                          );
+                        }
+                        if (widget.repository.enableItemIntelligence &&
+                            !_paymentReady) {
+                          return const Busy(message: 'Loading settlement…');
+                        }
+                        final settlement =
+                            widget.repository.enableItemIntelligence
+                            ? financeSettlement(
+                                household.members,
+                                household.legacyMembers,
+                                expenses.map(
+                                  (e) => FinanceEntry(
+                                    id: e.id,
+                                    merchant: e.merchant,
+                                    payer: e.payer,
+                                    date: e.date,
+                                    amount: e.total,
+                                    category: e.category,
+                                    refund: e.refund,
+                                    voided: e.voided,
+                                    splits: e.splits,
+                                    members: e.splitBetween,
+                                  ),
+                                ),
+                                _payments,
+                              )
+                            : calculateGroupSettlement(
+                                household.members,
+                                household.legacyMembers,
+                                expenses.map(
+                                  (e) => (
+                                    payer: e.payer,
+                                    amount: e.total,
+                                    splitBetween: e.splitBetween,
+                                  ),
+                                ),
+                              );
                         return ListView(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                           children: [
                             if (snapshot.data!.metadata.isFromCache ||
-                                snapshot.data!.metadata.hasPendingWrites)
+                                snapshot.data!.metadata.hasPendingWrites ||
+                                _paymentCached)
                               const Card(
                                 child: Padding(
                                   padding: EdgeInsets.all(12),
@@ -474,14 +582,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   leading: const CircleAvatar(
                                     child: Icon(Icons.receipt_long_outlined),
                                   ),
-                                  title: Text(expense.merchant),
+                                  title: Text(
+                                    '${expense.refund ? 'Refund · ' : ''}${expense.merchant}',
+                                  ),
                                   subtitle: Text(
                                     '${DateFormat.yMMMd().format(expense.date)} · Paid by ${household.name(expense.payer)}',
                                   ),
                                   trailing: Text(
                                     displayMoney(
                                       household.currency,
-                                      expense.total,
+                                      expense.refund
+                                          ? -expense.total
+                                          : expense.total,
                                     ),
                                   ),
                                   onTap: () => Navigator.of(context).push(

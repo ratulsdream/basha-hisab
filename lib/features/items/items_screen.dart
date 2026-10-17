@@ -33,7 +33,11 @@ class _ItemsScreenState extends State<ItemsScreen> {
   late Stream<QuerySnapshot<Map<String, dynamic>>> _corrections = widget
       .repository
       .watch('purchaseCorrections');
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _financial = widget
+      .repository
+      .watch('expenses');
   void _reload() => setState(() {
+    _financial = widget.repository.watch('expenses');
     _catalog = widget.repository.watch('catalog');
     _purchases = widget.repository.watch('purchases');
     _shopping = widget.repository.watch('shopping');
@@ -515,106 +519,127 @@ class _ItemsScreenState extends State<ItemsScreen> {
               _shopping,
               (shoppingSnapshot) => _query(
                 _stock,
-                (stockSnapshot) => _query(_corrections, (correctionSnapshot) {
-                  final catalog = {
-                    for (final d in catalogSnapshot.docs)
-                      d.id: CatalogItem.fromMap(d.id, d.data()),
-                  };
-                  final correctionMap = {
-                    for (final d in correctionSnapshot.docs) d.id: d.data(),
-                  };
-                  final purchases = purchaseSnapshot.docs
-                      .map(
-                        (d) => correctPurchaseView(
-                          purchaseFromMap(d.id, d.data()),
-                          correctionMap[d.id],
-                        ),
-                      )
-                      .toList();
-                  final analytics = analyzePurchases(purchases, catalog);
-                  final cached =
-                      [
-                        catalogSnapshot,
-                        purchaseSnapshot,
-                        shoppingSnapshot,
-                        stockSnapshot,
-                        correctionSnapshot,
-                      ].any(
-                        (s) =>
-                            s.metadata.isFromCache ||
-                            s.metadata.hasPendingWrites,
-                      );
-                  return Column(
-                    children: [
-                      if (_busy) const LinearProgressIndicator(),
-                      if (cached)
-                        const Text(
-                          'Cached / pending data — server acceptance not confirmed',
-                        ),
-                      if (_progress != null) Text(_progress!),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            LibraryTab(
-                              catalog: catalog,
-                              busy: _busy,
-                              edit: (item) => _edit(item, catalog),
-                              add: (item) => _addShopping(item),
-                            ),
-                            RegularItemsTab(
-                              analytics: analytics,
-                              catalog: catalog,
-                              currency: widget.household.currency,
-                              busy: _busy,
-                              add: (item, unit) =>
-                                  _addShopping(item, unit: unit, fast: true),
-                            ),
-                            ShoppingTab(
-                              documents: shoppingSnapshot.docs,
-                              household: widget.household,
-                              busy: _busy,
-                              edit: _editList,
-                              check: (doc, value) => _run(
-                                () => widget.repository.changeShopping(
-                                  doc.id,
-                                  doc.data()['revision'] as int,
-                                  checked: value,
-                                  assignedTo:
-                                      widget.household.members.contains(
-                                        doc.data()['assignedTo'],
-                                      )
-                                      ? doc.data()['assignedTo'] as String
-                                      : '',
-                                  notes: doc.data()['notes'] as String,
+                (stockSnapshot) => _query(
+                  _corrections,
+                  (correctionSnapshot) => _query(_financial, (
+                    financialSnapshot,
+                  ) {
+                    final voidedIds = financialSnapshot.docs
+                        .where((d) => d.data()['voided'] == true)
+                        .map((d) => d.id)
+                        .toSet();
+                    final catalog = {
+                      for (final d in catalogSnapshot.docs)
+                        d.id: CatalogItem.fromMap(d.id, d.data()),
+                    };
+                    final correctionMap = {
+                      for (final d in correctionSnapshot.docs) d.id: d.data(),
+                    };
+                    final purchases = purchaseSnapshot.docs
+                        .map(
+                          (d) => correctPurchaseView(
+                            purchaseFromMap(d.id, d.data()),
+                            correctionMap[d.id],
+                          ),
+                        )
+                        .map(
+                          (p) => voidedIds.contains(p.expenseId)
+                              ? correctPurchaseView(p, {
+                                  'itemId': p.itemId,
+                                  'quantityMilli': p.quantityMilli,
+                                  'unit': p.unit,
+                                  'quantityVerified': p.quantityVerified,
+                                  'active': false,
+                                })
+                              : p,
+                        )
+                        .toList();
+                    final analytics = analyzePurchases(purchases, catalog);
+                    final cached =
+                        [
+                          catalogSnapshot,
+                          purchaseSnapshot,
+                          shoppingSnapshot,
+                          stockSnapshot,
+                          correctionSnapshot,
+                          financialSnapshot,
+                        ].any(
+                          (s) =>
+                              s.metadata.isFromCache ||
+                              s.metadata.hasPendingWrites,
+                        );
+                    return Column(
+                      children: [
+                        if (_busy) const LinearProgressIndicator(),
+                        if (cached)
+                          const Text(
+                            'Cached / pending data — server acceptance not confirmed',
+                          ),
+                        if (_progress != null) Text(_progress!),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              LibraryTab(
+                                catalog: catalog,
+                                busy: _busy,
+                                edit: (item) => _edit(item, catalog),
+                                add: (item) => _addShopping(item),
+                              ),
+                              RegularItemsTab(
+                                analytics: analytics,
+                                catalog: catalog,
+                                currency: widget.household.currency,
+                                busy: _busy,
+                                add: (item, unit) =>
+                                    _addShopping(item, unit: unit, fast: true),
+                              ),
+                              ShoppingTab(
+                                documents: shoppingSnapshot.docs,
+                                household: widget.household,
+                                busy: _busy,
+                                edit: _editList,
+                                check: (doc, value) => _run(
+                                  () => widget.repository.changeShopping(
+                                    doc.id,
+                                    doc.data()['revision'] as int,
+                                    checked: value,
+                                    assignedTo:
+                                        widget.household.members.contains(
+                                          doc.data()['assignedTo'],
+                                        )
+                                        ? doc.data()['assignedTo'] as String
+                                        : '',
+                                    notes: doc.data()['notes'] as String,
+                                  ),
                                 ),
                               ),
-                            ),
-                            KitchenTab(
-                              documents: stockSnapshot.docs,
-                              catalog: catalog,
-                              busy: _busy,
-                              consume: _consume,
-                              add: (item, unit) =>
-                                  _addShopping(item, unit: unit),
-                            ),
-                            PricesTab(
-                              analytics: analytics,
-                              catalog: catalog,
-                              purchases: purchases,
-                              review: (purchase) => _correctPurchase(
-                                purchase,
-                                correctionMap[purchase.id]?['revision']
-                                        as int? ??
-                                    -1,
-                                catalog,
+                              KitchenTab(
+                                documents: stockSnapshot.docs,
+                                catalog: catalog,
+                                busy: _busy,
+                                consume: _consume,
+                                add: (item, unit) =>
+                                    _addShopping(item, unit: unit),
                               ),
-                            ),
-                          ],
+                              PricesTab(
+                                analytics: analytics,
+                                catalog: catalog,
+                                purchases: purchases,
+                                review: (purchase) => _correctPurchase(
+                                  purchase,
+                                  correctionMap[purchase.id]?['revision']
+                                          as int? ??
+                                      -1,
+                                  catalog,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                }),
+                      ],
+                    );
+                  }),
+                ),
               ),
             ),
           ),

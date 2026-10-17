@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'domain.dart';
 import 'features/items/items_repository.dart';
+import 'features/planning/planning_domain.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 
 String friendlyError(Object error) {
   if (error is FirebaseException) {
@@ -61,6 +63,12 @@ class Expense {
       date = (data['date'] as Timestamp).toDate().toUtc(),
       total = data['total'] as int,
       itemCount = data['itemCount'] as int,
+      category = data['category'] as String? ?? 'uncategorized',
+      refund = data['kind'] == 'refund',
+      voided = data['voided'] == true,
+      splits = data['splitCents'] == null
+          ? null
+          : Map<String, int>.from(data['splitCents'] as Map),
       splitBetween = data['splitBetween'] == null
           ? null
           : List<String>.from(data['splitBetween'] as List);
@@ -69,6 +77,9 @@ class Expense {
   final int total;
   final int itemCount;
   final List<String>? splitBetween;
+  final String category;
+  final bool refund, voided;
+  final Map<String, int>? splits;
 }
 
 class HouseholdRepository {
@@ -270,11 +281,84 @@ class HouseholdRepository {
     required List<ExpenseItem> items,
     required int total,
   }) async {
-    final expense = db
-        .collection('households')
-        .doc(household.id)
-        .collection('expenses')
-        .doc(id);
+    await _persistExpense(
+      household: household,
+      id: id,
+      merchant: merchant,
+      payer: payer,
+      date: date,
+      items: items,
+      total: total,
+    );
+  }
+
+  Future<void> savePlannedExpense({
+    required Household household,
+    required String id,
+    required String merchant,
+    required String payer,
+    required DateTime date,
+    required List<ExpenseItem> items,
+    required int total,
+    bool personal = false,
+    String category = 'uncategorized',
+    bool refund = false,
+    Map<String, int>? splitCents,
+    String? recurringId,
+  }) async {
+    if (personal && payer != uid) {
+      throw ArgumentError('Personal expenses use your account as payer');
+    }
+    if (!expenseCategories.contains(category)) {
+      throw ArgumentError('Unknown category');
+    }
+    if (splitCents != null) {
+      fixedSplit(total, splitCents);
+      if (splitCents.keys.any((uid) => !household.members.contains(uid))) {
+        throw ArgumentError('Invalid split members');
+      }
+    }
+    await _persistExpense(
+      household: household,
+      id: id,
+      merchant: merchant,
+      payer: payer,
+      date: date,
+      items: items,
+      total: total,
+      personal: personal,
+      metadata: {
+        'scope': personal ? 'personal' : 'shared',
+        'category': category,
+        'kind': refund ? 'refund' : 'expense',
+        if (!personal && splitCents != null) 'splitCents': splitCents,
+        if (personal) 'groupId': household.id,
+        if (recurringId != null) ...{
+          'recurringId': recurringId,
+          'recurringMonth': monthKey(date),
+        },
+      },
+    );
+  }
+
+  Future<void> _persistExpense({
+    required Household household,
+    required String id,
+    required String merchant,
+    required String payer,
+    required DateTime date,
+    required List<ExpenseItem> items,
+    required int total,
+    bool personal = false,
+    Map<String, Object> metadata = const {},
+  }) async {
+    final expense = personal
+        ? profile.collection('personalExpenses').doc(id)
+        : db
+              .collection('households')
+              .doc(household.id)
+              .collection('expenses')
+              .doc(id);
     await db.runTransaction((batch) async {
       final existing = await batch.get(expense);
       if (existing.exists) {
@@ -286,7 +370,14 @@ class HouseholdRepository {
             data['payer'] == payer &&
             data['total'] == total &&
             sameDate == DateTime.utc(date.year, date.month, date.day) &&
-            data['itemCount'] == items.length;
+            data['itemCount'] == items.length &&
+            metadata.entries
+                .where((e) => e.key != 'category')
+                .every(
+                  (e) => e.value is Map
+                      ? mapEquals(data[e.key] as Map?, e.value as Map)
+                      : data[e.key] == e.value,
+                );
         for (var index = 0; index < items.length && matches; index++) {
           final saved = await batch.get(
             expense.collection('items').doc('$index'),
@@ -310,6 +401,7 @@ class HouseholdRepository {
         return; // Lost acknowledgement / retry: the identical expense is already saved.
       }
       batch.set(expense, {
+        ...metadata,
         'merchant': merchant,
         'payer': payer,
         'date': Timestamp.fromDate(
@@ -317,7 +409,8 @@ class HouseholdRepository {
         ),
         'month': monthKey(date),
         'itemCount': items.length,
-        if (household.members.length >= 2) 'splitBetween': household.members,
+        if (!personal && household.members.length >= 2)
+          'splitBetween': household.members,
         'total': total,
         'createdBy': uid,
         'createdAt': FieldValue.serverTimestamp(),
@@ -329,7 +422,7 @@ class HouseholdRepository {
         });
       }
     });
-    if (enableItemIntelligence) {
+    if (enableItemIntelligence && !personal) {
       await ItemsRepository(db, uid, household.id).indexExpense(id);
     }
   }

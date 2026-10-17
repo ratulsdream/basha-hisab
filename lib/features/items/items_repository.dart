@@ -66,7 +66,9 @@ class ItemsRepository {
           'itemIndex': row['index'],
           'itemId': id,
           'name': name,
-          'amount': row['amount'],
+          'amount': data['kind'] == 'refund'
+              ? -(row['amount'] as int)
+              : row['amount'],
           'merchant': data['merchant'],
           'date': data['date'],
           'quantityMilli': row['quantityMilli'] ?? 1000,
@@ -405,7 +407,11 @@ class ItemsRepository {
         'unit': unit,
         'quantityMilli': quantityMilli,
         'lowStockMilli': lowStockMilli,
-        'expiry': expiry == null ? null : Timestamp.fromDate(expiry),
+        'expiry': expiry == null
+            ? null
+            : Timestamp.fromDate(
+                DateTime.utc(expiry.year, expiry.month, expiry.day),
+              ),
         'lastEvent': id,
         'revision': 0,
         'updatedBy': uid,

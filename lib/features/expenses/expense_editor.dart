@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import '../../data.dart';
 import '../../domain.dart';
 import '../items/items_repository.dart';
+import '../planning/planning_repository.dart';
+import '../planning/planning_domain.dart';
+import '../planning/expense_options.dart';
 import '../items/items_domain.dart';
 import '../items/items_screen.dart' show quantityMilliInput;
 
@@ -61,10 +64,14 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
   late final String _id = widget.repository.newExpenseId(widget.household.id);
   bool _saving = false, _reviewed = false, _checkingDuplicate = false;
   String? _acknowledgedDuplicate;
+  bool _personal = false, _refund = false;
+  String _category = 'uncategorized', _splitMode = 'equal';
+  final _splitValue = TextEditingController(text: '50');
   String? _error;
   @override
   void dispose() {
     _merchant.dispose();
+    _splitValue.dispose();
     _total.dispose();
     for (final item in _items) {
       item.dispose();
@@ -142,6 +149,26 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
       );
       if (proceed != true || !mounted) return;
     }
+    Map<String, int>? splitCents;
+    if (widget.repository.enableItemIntelligence &&
+        !_personal &&
+        _splitMode != 'equal' &&
+        widget.household.members.length == 2) {
+      try {
+        final ids = [...widget.household.members]..sort();
+        final value = parseMoney(_splitValue.text);
+        if (value == null) throw StateError('Enter a valid share.');
+        splitCents = _splitMode == 'percentage'
+            ? percentageSplit(total, {ids[0]: value, ids[1]: 10000 - value})
+            : fixedSplit(total, {ids[0]: value, ids[1]: total - value});
+      } catch (e) {
+        setState(
+          () => _error =
+              'Shares must be nonnegative and add up to the exact total / 100%.',
+        );
+        return;
+      }
+    }
     String? signature;
     if (widget.repository.enableItemIntelligence) {
       signature = receiptSignature(
@@ -155,11 +182,17 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
       if (_acknowledgedDuplicate != signature) {
         setState(() => _checkingDuplicate = true);
         try {
-          final matches = await ItemsRepository(
-            widget.repository.db,
-            widget.repository.uid,
-            widget.household.id,
-          ).duplicates(signature, widget.draft.imageHash);
+          final matches = _personal
+              ? await PlanningRepository(
+                  widget.repository.db,
+                  widget.repository.uid,
+                  widget.household.id,
+                ).personalDuplicates(signature, widget.draft.imageHash)
+              : await ItemsRepository(
+                  widget.repository.db,
+                  widget.repository.uid,
+                  widget.household.id,
+                ).duplicates(signature, widget.draft.imageHash);
           if (matches.any((m) => m.expenseId != _id)) {
             if (!mounted) return;
             final proceed = await showDialog<bool>(
@@ -197,30 +230,63 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
       _error = null;
     });
     try {
-      await widget.repository.saveExpense(
-        household: widget.household,
-        id: _id,
-        merchant: _merchant.text.trim(),
-        payer: _payer,
-        date: _date,
-        items: _items
-            .map(
-              (item) => ExpenseItem(
-                item.name.text.trim(),
-                parseMoney(item.amount.text)!,
-                quantityMilli: quantityMilliInput(item.quantity.text),
-                unit: item.unit,
-              ),
-            )
-            .toList(),
-        total: total,
-      );
+      if (widget.repository.enableItemIntelligence) {
+        await widget.repository.savePlannedExpense(
+          personal: _personal,
+          category: _category,
+          refund: _refund,
+          splitCents: splitCents,
+          household: widget.household,
+          id: _id,
+          merchant: _merchant.text.trim(),
+          payer: _payer,
+          date: _date,
+          items: _items
+              .map(
+                (item) => ExpenseItem(
+                  item.name.text.trim(),
+                  parseMoney(item.amount.text)!,
+                  quantityMilli: quantityMilliInput(item.quantity.text),
+                  unit: item.unit,
+                ),
+              )
+              .toList(),
+          total: total,
+        );
+      } else {
+        await widget.repository.saveExpense(
+          household: widget.household,
+          id: _id,
+          merchant: _merchant.text.trim(),
+          payer: _payer,
+          date: _date,
+          items: _items
+              .map(
+                (item) => ExpenseItem(
+                  item.name.text.trim(),
+                  parseMoney(item.amount.text)!,
+                  quantityMilli: quantityMilliInput(item.quantity.text),
+                  unit: item.unit,
+                ),
+              )
+              .toList(),
+          total: total,
+        );
+      }
       if (signature != null) {
-        await ItemsRepository(
-          widget.repository.db,
-          widget.repository.uid,
-          widget.household.id,
-        ).recordSignature(_id, signature, widget.draft.imageHash);
+        if (_personal) {
+          await PlanningRepository(
+            widget.repository.db,
+            widget.repository.uid,
+            widget.household.id,
+          ).recordPersonalSignature(_id, signature, widget.draft.imageHash);
+        } else {
+          await ItemsRepository(
+            widget.repository.db,
+            widget.repository.uid,
+            widget.household.id,
+          ).recordSignature(_id, signature, widget.draft.imageHash);
+        }
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {
@@ -254,6 +320,30 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              if (widget.repository.enableItemIntelligence)
+                ExpenseOptions(
+                  home: widget.household,
+                  personal: _personal,
+                  refund: _refund,
+                  category: _category,
+                  splitMode: _splitMode,
+                  splitValue: _splitValue,
+                  change:
+                      ({
+                        bool? personal,
+                        bool? refund,
+                        String? category,
+                        String? splitMode,
+                      }) => setState(() {
+                        if (personal != null) {
+                          _personal = personal;
+                          if (personal) _payer = widget.repository.uid;
+                        }
+                        if (refund != null) _refund = refund;
+                        if (category != null) _category = category;
+                        if (splitMode != null) _splitMode = splitMode;
+                      }),
+                ),
               if (widget.fromReceipt)
                 Card(
                   child: Padding(
@@ -318,6 +408,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                 initialValue: _payer,
                 decoration: const InputDecoration(labelText: 'Who paid?'),
                 items: widget.household.members
+                    .where((uid) => !_personal || uid == widget.repository.uid)
                     .map(
                       (id) => DropdownMenuItem(
                         value: id,

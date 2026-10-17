@@ -111,13 +111,19 @@ class ItemAnalytics {
   ItemAnalytics(this.itemId, this.unit, this.purchases);
   final String itemId, unit;
   final List<Purchase> purchases;
-  int get frequency => purchases.map((p) => p.expenseId).toSet().length;
+  int get frequency => purchases
+      .where((p) => p.amount >= 0)
+      .map((p) => p.expenseId)
+      .toSet()
+      .length;
   int get expenditure => purchases.fold(0, (sum, p) => sum + p.amount);
   int get quantity => purchases.fold(0, (sum, p) => sum + p.quantityMilli);
   Purchase get latest =>
       ([...purchases]..sort((a, b) => b.date.compareTo(a.date))).first;
   double? get averageUnitPrice {
-    final known = purchases.where((p) => p.quantityVerified).toList();
+    final known = purchases
+        .where((p) => p.quantityVerified && p.amount >= 0)
+        .toList();
     if (known.isEmpty) return null;
     return known.fold<int>(0, (sum, p) => sum + p.amount) *
         1000 /
@@ -125,8 +131,9 @@ class ItemAnalytics {
   }
 
   double? get priceMovement {
-    final sorted = purchases.where((p) => p.quantityVerified).toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final sorted =
+        purchases.where((p) => p.quantityVerified && p.amount >= 0).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     return sorted.length < 2
         ? null
         : sorted.last.unitPrice - sorted[sorted.length - 2].unitPrice;

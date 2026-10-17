@@ -11,10 +11,10 @@ Phase 1 implements features 1–7 as a gated candidate: library, regular items,
 shopping, kitchen inventory, price history, duplicates, and improved OCR. See
 PHASE_1.md for scope, migration and enablement boundary.
 
+Phase 2 now implements features 8–14 as a gated candidate; see PHASE_2.md.
+
 Remaining work proceeds in issue order:
 
-- Phase 2 (8–14): category reporting, budgets, repayment history, recurring
-  expenses, personal/shared privacy, custom splits, search and filters.
 - Phase 3 (15–18): notification preferences and local/background configuration,
   PDF/Excel export, durable offline queue/synchronization, profile/group polish.
 

@@ -296,3 +296,46 @@ test('alias corrections require history; disabling never erases source purchases
  await assertSucceeds(batch.commit());assert.equal((await getDocs(collection(database,'households/home/purchases'))).size,1);
  await assertFails(getDocs(collection(db('outsider'),'households/home/aliasChanges')));
 });
+test('personal expense/items are owner-only, including against the roommate',async()=>{
+ await createHome();await join('bob');const database=db('alice'),batch=writeBatch(database);
+ batch.set(doc(database,'users/alice/personalExpenses/private'),expense({scope:'personal',kind:'expense',category:'food',groupId:'home',itemCount:1}));
+ batch.set(doc(database,'users/alice/personalExpenses/private/items/0'),{name:'Private medicine',amount:250,index:0});
+ await assertSucceeds(batch.commit());
+ await assertSucceeds(getDoc(doc(database,'users/alice/personalExpenses/private')));
+ await assertFails(getDoc(doc(db('bob'),'users/alice/personalExpenses/private')));
+ await assertFails(getDocs(collection(db('bob'),'users/alice/personalExpenses/private/items')));
+ await assertFails(setDoc(doc(database,'households/home/expenses/private-leak'),expense({scope:'personal',kind:'expense',category:'food'})));
+ await assertFails(setDoc(doc(database,'users/alice/personalExpenses/wrong-payer'),expense({scope:'personal',kind:'expense',category:'food',groupId:'home',payer:'bob'})));
+});
+test('custom shares require exact integer cents and current group participants',async()=>{
+ await createHome();await join('bob');const ref=id=>doc(db('alice'),`households/home/expenses/${id}`);
+ await assertSucceeds(setDoc(ref('custom'),expense({splitCents:{alice:150,bob:100},scope:'shared',category:'food',kind:'expense'})));
+ for(const [i,splitCents] of [{alice:150,bob:99},{alice:-1,bob:251},{alice:250,mallory:0},{alice:150.5,bob:99.5}].entries())await assertFails(setDoc(ref(`bad-split-${i}`),expense({splitCents})));
+ await assertSucceeds(setDoc(ref('refund'),expense({kind:'refund',category:'food'})));
+});
+test('repayments are immutable and only exact one-time reversals are permitted',async()=>{
+ await createHome();await join('bob');const database=db('alice'),date=Timestamp.fromDate(new Date('2026-10-15T00:00:00Z'));
+ const data={from:'bob',to:'alice',amount:100,date,month:'2026-10',reference:'Cash receipt',reversalOf:'',createdBy:'alice',createdAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(database,'households/home/payments/p1'),data));
+ await assertFails(setDoc(doc(database,'households/home/payments/p1'),{...data,amount:200}));
+ await assertFails(setDoc(doc(database,'households/home/payments/reverse_p1'),{...data,amount:200,reversalOf:'p1'}));
+ await assertSucceeds(setDoc(doc(database,'households/home/payments/reverse_p1'),{...data,reversalOf:'p1',reference:'Recorded in error'}));
+ await assertFails(setDoc(doc(database,'households/home/payments/reverse_p1'),{...data,reversalOf:'p1'}));
+ await assertFails(getDocs(collection(db('outsider'),'households/home/payments')));
+});
+test('category and void corrections require matching audit; only creator can change void state',async()=>{
+ await createHome();await join('bob');const database=db('alice'),ref=doc(database,'households/home/expenses/e');await setDoc(ref,expense());
+ await assertFails(setDoc(ref,{category:'food',voided:true,revision:0,updatedBy:'alice',updatedAt:serverTimestamp()},{merge:true}));
+ const batch=writeBatch(database);batch.update(ref,{category:'food',voided:true,revision:0,updatedBy:'alice',updatedAt:serverTimestamp()});batch.set(doc(database,'households/home/expenseChanges/e_0'),{expenseId:'e',revision:0,before:{category:'uncategorized',voided:false},after:{category:'food',voided:true},actor:'alice',at:serverTimestamp()});await assertSucceeds(batch.commit());
+ assert.equal((await getDoc(ref)).data().total,250);
+ const bob=db('bob'),other=writeBatch(bob);other.update(doc(bob,'households/home/expenses/e'),{category:'food',voided:false,revision:1,updatedBy:'bob',updatedAt:serverTimestamp()});other.set(doc(bob,'households/home/expenseChanges/e_1'),{expenseId:'e',revision:1,before:{category:'food',voided:true},after:{category:'food',voided:false},actor:'bob',at:serverTimestamp()});await assertFails(other.commit());
+});
+test('budgets, recurring templates and deterministic confirmed occurrences are scoped and validated',async()=>{
+ await createHome();const database=db('alice');
+ await assertSucceeds(setDoc(doc(database,'households/home/budgets/2026-10'),{total:10000,categories:{food:5000},revision:0,updatedBy:'alice',updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(database,'households/home/budgets/2026-11'),{total:-1,categories:{food:5000},revision:0,updatedBy:'alice',updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(doc(database,'households/home/recurring/rent'),{merchant:'Rent',amount:10000,payer:'alice',category:'utilities',day:1,enabled:true,revision:0,updatedBy:'alice',updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(database,'households/home/expenses/random-duplicate'),expense({merchant:'Rent',total:10000,recurringId:'rent',recurringMonth:'2026-10'})));
+ await assertSucceeds(setDoc(doc(database,'households/home/expenses/recurring_rent_2026-10'),expense({merchant:'Rent',total:10000,recurringId:'rent',recurringMonth:'2026-10'})));
+ await assertFails(getDocs(collection(db('outsider'),'households/home/recurring')));
+});
