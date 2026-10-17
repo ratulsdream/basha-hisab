@@ -95,6 +95,8 @@ is not attempted automatically because rotating a faint receipt can destroy text
 
 ## Checks and APKs
 
+[Download verified v3 phase APKs](docs/v3/APKS.md) and read the migration/security gate notes before installing.
+
 ```sh
 flutter pub get --enforce-lockfile
 dart format --output=none --set-exit-if-changed lib test packages/local_receipt_ocr/lib
