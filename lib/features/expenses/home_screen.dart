@@ -15,6 +15,8 @@ import '../groups/group_selection.dart';
 import 'expense_editor.dart';
 import 'expense_details.dart';
 import '../receipts/receipt_ocr.dart';
+import '../items/items_screen.dart';
+import '../items/items_repository.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -218,6 +220,26 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _scanning ? null : () => Navigator.pop(context),
           ),
           actions: [
+            if (household != null)
+              IconButton(
+                tooltip: 'Grocery & kitchen',
+                icon: const Icon(Icons.kitchen_outlined),
+                onPressed: _scanning
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ItemsScreen(
+                            repository: ItemsRepository(
+                              widget.repository.db,
+                              widget.repository.uid,
+                              household.id,
+                            ),
+                            household: household,
+                            enabled: widget.repository.enableItemIntelligence,
+                          ),
+                        ),
+                      ),
+              ),
             if (household?.members.length == 1)
               IconButton(
                 tooltip: 'Invite roommate',

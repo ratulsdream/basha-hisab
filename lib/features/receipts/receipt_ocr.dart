@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -79,7 +80,16 @@ class ReceiptOcr {
       if (texts.every((text) => text.trim().isEmpty) && lastError != null) {
         throw lastError;
       }
-      return selectReceiptPass(texts[0], texts[1]);
+      final selected = selectReceiptPass(texts[0], texts[1]);
+      return ReceiptDraft(
+        merchant: selected.merchant,
+        date: selected.date,
+        total: selected.total,
+        items: selected.items,
+        rawText: selected.rawText,
+        warnings: selected.warnings,
+        imageHash: sha256.convert(images.first).toString(),
+      );
     } finally {
       // Image derivatives never reach Firestore and do not accumulate in app storage.
       await workspace.delete(recursive: true);

@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 
 import '../../data.dart';
 import '../../domain.dart';
+import '../items/items_repository.dart';
+import '../items/items_domain.dart';
+import '../items/items_screen.dart' show quantityMilliInput;
 
 import '../../widgets/common.dart';
 
@@ -11,11 +14,20 @@ class _ItemFields {
     : name = TextEditingController(text: item?.name ?? ''),
       amount = TextEditingController(
         text: item == null ? '' : moneyInput(item.amount),
-      );
+      ),
+      quantity = TextEditingController(
+        text: item?.quantityMilli == null
+            ? ''
+            : '${item!.quantityMilli! / 1000}',
+      ),
+      unit = item?.unit ?? 'each';
   final TextEditingController name, amount;
+  final TextEditingController quantity;
+  String unit;
   void dispose() {
     name.dispose();
     amount.dispose();
+    quantity.dispose();
   }
 }
 
@@ -47,7 +59,8 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
   late DateTime _date = widget.draft.date ?? DateTime.now();
   late String _payer = widget.repository.uid;
   late final String _id = widget.repository.newExpenseId(widget.household.id);
-  bool _saving = false, _reviewed = false;
+  bool _saving = false, _reviewed = false, _checkingDuplicate = false;
+  String? _acknowledgedDuplicate;
   String? _error;
   @override
   void dispose() {
@@ -60,7 +73,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || _checkingDuplicate) return;
     // Validate controllers as well as mounted fields: long receipts are lazy
     // lists, and fields outside the viewport may not currently be in the Form.
     final parsedTotal = parseMoney(_total.text);
@@ -73,6 +86,13 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
     } else {
       for (var index = 0; index < _items.length; index++) {
         final item = _items[index];
+        if (widget.repository.enableItemIntelligence &&
+            item.quantity.text.trim().isNotEmpty &&
+            quantityMilliInput(item.quantity.text) == null) {
+          validationError =
+              'Check item ${index + 1}: enter a positive quantity with up to three decimals, or leave it blank.';
+          break;
+        }
         if (item.name.text.trim().isEmpty ||
             item.name.text.trim().length > 100 ||
             parseMoney(item.amount.text) == null) {
@@ -122,6 +142,56 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
       );
       if (proceed != true || !mounted) return;
     }
+    String? signature;
+    if (widget.repository.enableItemIntelligence) {
+      signature = receiptSignature(
+        merchant: _merchant.text,
+        date: _date,
+        total: total,
+        items: _items.map(
+          (i) => (name: i.name.text, amount: parseMoney(i.amount.text)!),
+        ),
+      );
+      if (_acknowledgedDuplicate != signature) {
+        setState(() => _checkingDuplicate = true);
+        try {
+          final matches = await ItemsRepository(
+            widget.repository.db,
+            widget.repository.uid,
+            widget.household.id,
+          ).duplicates(signature, widget.draft.imageHash);
+          if (matches.any((m) => m.expenseId != _id)) {
+            if (!mounted) return;
+            final proceed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Possible duplicate receipt'),
+                content: const Text(
+                  'A saved expense has matching image or receipt details. This may still be a separate purchase. Review history before deciding.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Keep editing'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Save as separate purchase'),
+                  ),
+                ],
+              ),
+            );
+            if (proceed != true) return;
+          }
+          _acknowledgedDuplicate = signature;
+        } catch (e) {
+          if (mounted) setState(() => _error = friendlyError(e));
+          return;
+        } finally {
+          if (mounted) setState(() => _checkingDuplicate = false);
+        }
+      }
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -138,11 +208,20 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
               (item) => ExpenseItem(
                 item.name.text.trim(),
                 parseMoney(item.amount.text)!,
+                quantityMilli: quantityMilliInput(item.quantity.text),
+                unit: item.unit,
               ),
             )
             .toList(),
         total: total,
       );
+      if (signature != null) {
+        await ItemsRepository(
+          widget.repository.db,
+          widget.repository.uid,
+          widget.household.id,
+        ).recordSignature(_id, signature, widget.draft.imageHash);
+      }
       if (mounted) Navigator.pop(context);
     } catch (error) {
       if (mounted) setState(() => _error = friendlyError(error));
@@ -271,50 +350,92 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                 Padding(
                   key: ObjectKey(_items[i]),
                   padding: const EdgeInsets.only(top: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Column(
                     children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextFormField(
-                          controller: _items[i].name,
-                          maxLength: 100,
-                          decoration: InputDecoration(
-                            labelText: 'Item ${i + 1}',
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextFormField(
+                              controller: _items[i].name,
+                              maxLength: 100,
+                              decoration: InputDecoration(
+                                labelText: 'Item ${i + 1}',
+                              ),
+                              validator: (value) =>
+                                  (value?.trim().isEmpty ?? true) ||
+                                      value!.trim().length > 100
+                                  ? 'Use 1–100 characters.'
+                                  : null,
+                            ),
                           ),
-                          validator: (value) =>
-                              (value?.trim().isEmpty ?? true) ||
-                                  value!.trim().length > 100
-                              ? 'Use 1–100 characters.'
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _items[i].amount,
-                          onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(labelText: 'Price'),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: TextFormField(
+                              controller: _items[i].amount,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Price',
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              validator: (value) =>
+                                  parseMoney(value ?? '') == null
+                                  ? 'Invalid price'
+                                  : null,
+                            ),
                           ),
-                          validator: (value) => parseMoney(value ?? '') == null
-                              ? 'Invalid price'
-                              : null,
+                          IconButton(
+                            tooltip: 'Remove item',
+                            onPressed: () {
+                              final item = _items[i];
+                              setState(() => _items.removeAt(i));
+                              WidgetsBinding.instance.addPostFrameCallback(
+                                (_) => item.dispose(),
+                              );
+                            },
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                        ],
+                      ),
+                      if (widget.repository.enableItemIntelligence)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _items[i].quantity,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Reviewed quantity (optional)',
+                                  helperText: 'Leave blank when unknown',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _items[i].unit,
+                                items: itemUnits
+                                    .map(
+                                      (u) => DropdownMenuItem(
+                                        value: u,
+                                        child: Text(u),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (u) =>
+                                    setState(() => _items[i].unit = u!),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      IconButton(
-                        tooltip: 'Remove item',
-                        onPressed: () {
-                          final item = _items[i];
-                          setState(() => _items.removeAt(i));
-                          WidgetsBinding.instance.addPostFrameCallback(
-                            (_) => item.dispose(),
-                          );
-                        },
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
                     ],
                   ),
                 ),
@@ -404,7 +525,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                 ),
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: _saving ? null : _save,
+                onPressed: _saving || _checkingDuplicate ? null : _save,
                 icon: _saving
                     ? const SizedBox(
                         width: 18,

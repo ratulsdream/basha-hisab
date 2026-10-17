@@ -128,6 +128,200 @@ service cloud.firestore {
           && !existsAfter(minePath(uid, id));
         allow update: if false;
       }
+      function editedByMember(data) { return member(id) && data.updatedBy == request.auth.uid && data.updatedAt == request.time; }
+      function category(value) { return value in ['uncategorized','food','rice','vegetables','household','utilities','other']; }
+      function unit(value) { return value in ['each','g','kg','ml','l']; }
+      function catalogPath(item) { return /databases/$(database)/documents/households/$(id)/catalog/$(item); }
+      function catalogChangePath(item, revision) { return /databases/$(database)/documents/households/$(id)/catalogChanges/$(item + '_' + string(revision)); }
+      function validCatalog(data) {
+        return data.keys().hasAll(['name','category','mergedInto','revision','updatedBy','updatedAt'])
+          && data.keys().hasOnly(['name','category','mergedInto','revision','updatedBy','updatedAt'])
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+          && category(data.category) && data.mergedInto is string && data.revision is int && data.revision >= 0
+          && editedByMember(data);
+      }
+      match /catalog/{item} {
+        allow read: if member(id);
+        allow create: if item.matches('^[a-f0-9]{64}$') && validCatalog(request.resource.data)
+          && request.resource.data.revision == 0 && request.resource.data.mergedInto == '';
+        allow update: if validCatalog(request.resource.data)
+          && request.resource.data.revision == resource.data.revision + 1
+          && (request.resource.data.mergedInto == '' || (request.resource.data.mergedInto != item && exists(catalogPath(request.resource.data.mergedInto)) && getAfter(catalogPath(request.resource.data.mergedInto)).data.mergedInto == ''))
+          && getAfter(catalogChangePath(item,request.resource.data.revision)).data.before == {'name':resource.data.name,'category':resource.data.category,'mergedInto':resource.data.mergedInto}
+          && getAfter(catalogChangePath(item,request.resource.data.revision)).data.after == {'name':request.resource.data.name,'category':request.resource.data.category,'mergedInto':request.resource.data.mergedInto};
+        allow delete: if false;
+      }
+      match /catalogChanges/{change} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['itemId','revision','before','after','actor','at'])
+          && request.resource.data.keys().hasOnly(['itemId','revision','before','after','actor','at'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time
+          && request.resource.data.revision is int
+          && change == request.resource.data.itemId + '_' + string(request.resource.data.revision)
+          && getAfter(catalogPath(request.resource.data.itemId)).data.revision == request.resource.data.revision
+          && get(catalogPath(request.resource.data.itemId)).data.revision + 1 == request.resource.data.revision;
+        allow update, delete: if false;
+      }
+      function aliasPath(alias) { return /databases/$(database)/documents/households/$(id)/itemAliases/$(alias); }
+      function aliasChangePath(alias,revision) { return /databases/$(database)/documents/households/$(id)/aliasChanges/$(alias + '_' + string(revision)); }
+      match /itemAliases/{alias} {
+        function validAlias(data) {
+          return alias.matches('^[a-f0-9]{64}$') && editedByMember(data)
+            && data.keys().hasAll(['itemId','alias','active','revision','updatedBy','updatedAt'])
+            && data.keys().hasOnly(['itemId','alias','active','revision','updatedBy','updatedAt'])
+            && data.alias is string && data.alias.size() > 0 && data.alias.size() <= 100
+            && data.active is bool && data.revision is int && existsAfter(catalogPath(data.itemId));
+        }
+        allow read: if member(id);
+        allow create: if validAlias(request.resource.data) && request.resource.data.revision == 0 && request.resource.data.active == true;
+        allow update: if validAlias(request.resource.data) && request.resource.data.alias == resource.data.alias
+          && request.resource.data.revision == resource.data.revision + 1
+          && getAfter(aliasChangePath(alias,request.resource.data.revision)).data.before == {'itemId':resource.data.itemId,'active':resource.data.active}
+          && getAfter(aliasChangePath(alias,request.resource.data.revision)).data.after == {'itemId':request.resource.data.itemId,'active':request.resource.data.active};
+        allow delete: if false;
+      }
+      match /aliasChanges/{change} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['aliasId','revision','before','after','actor','at'])
+          && request.resource.data.keys().hasOnly(['aliasId','revision','before','after','actor','at'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time
+          && request.resource.data.revision is int && change == request.resource.data.aliasId + '_' + string(request.resource.data.revision)
+          && getAfter(aliasPath(request.resource.data.aliasId)).data.revision == request.resource.data.revision
+          && get(aliasPath(request.resource.data.aliasId)).data.revision + 1 == request.resource.data.revision;
+        allow update, delete: if false;
+      }
+      match /purchases/{purchase} {
+        function sourcePath() { return /databases/$(database)/documents/households/$(id)/expenses/$(request.resource.data.expenseId); }
+        function linePath() { return /databases/$(database)/documents/households/$(id)/expenses/$(request.resource.data.expenseId)/items/$(string(request.resource.data.itemIndex)); }
+        allow read: if member(id);
+        allow create: if member(id)
+          && request.resource.data.keys().hasAll(['expenseId','itemIndex','itemId','name','amount','merchant','date','quantityMilli','unit','quantityVerified','active','createdBy','updatedAt'])
+          && request.resource.data.keys().hasOnly(['expenseId','itemIndex','itemId','name','amount','merchant','date','quantityMilli','unit','quantityVerified','active','createdBy','updatedAt'])
+          && request.resource.data.createdBy == request.auth.uid && request.resource.data.updatedAt == request.time
+          && request.resource.data.itemIndex is int && request.resource.data.itemIndex >= 0
+          && purchase == request.resource.data.expenseId + '_' + string(request.resource.data.itemIndex)
+          && request.resource.data.name == get(linePath()).data.name
+          && request.resource.data.amount == get(linePath()).data.amount
+          && request.resource.data.merchant == get(sourcePath()).data.merchant
+          && request.resource.data.date == get(sourcePath()).data.date
+          && request.resource.data.quantityMilli == get(linePath()).data.get('quantityMilli',1000)
+          && request.resource.data.unit == get(linePath()).data.get('unit','each')
+          && request.resource.data.quantityVerified == ('quantityMilli' in get(linePath()).data)
+          && request.resource.data.active == true && existsAfter(catalogPath(request.resource.data.itemId));
+        allow update, delete: if false;
+      }
+      function correctionPath(purchase) { return /databases/$(database)/documents/households/$(id)/purchaseCorrections/$(purchase); }
+      function purchaseChangePath(purchase, revision) { return /databases/$(database)/documents/households/$(id)/purchaseChanges/$(purchase + '_' + string(revision)); }
+      match /purchaseCorrections/{purchase} {
+        function validCorrection(data) {
+          return member(id) && data.keys().hasAll(['itemId','quantityMilli','unit','quantityVerified','active','revision','updatedBy','updatedAt'])
+            && data.keys().hasOnly(['itemId','quantityMilli','unit','quantityVerified','active','revision','updatedBy','updatedAt'])
+            && data.quantityMilli is int && data.quantityMilli > 0 && data.quantityMilli <= 100000000
+            && exists(catalogPath(data.itemId)) && unit(data.unit) && data.quantityVerified == true && data.active is bool && data.revision is int && editedByMember(data)
+            && getAfter(purchaseChangePath(purchase,data.revision)).data.after == {'itemId':data.itemId,'quantityMilli':data.quantityMilli,'unit':data.unit,'quantityVerified':data.quantityVerified,'active':data.active};
+        }
+        allow read: if member(id);
+        allow create: if validCorrection(request.resource.data) && request.resource.data.revision == 0 && exists(purchasePath(purchase))
+          && getAfter(purchaseChangePath(purchase,0)).data.before == {'itemId':get(purchasePath(purchase)).data.itemId,'quantityMilli':get(purchasePath(purchase)).data.quantityMilli,'unit':get(purchasePath(purchase)).data.unit,'quantityVerified':get(purchasePath(purchase)).data.quantityVerified,'active':get(purchasePath(purchase)).data.active};
+        allow update: if validCorrection(request.resource.data) && request.resource.data.revision == resource.data.revision + 1
+          && getAfter(purchaseChangePath(purchase,request.resource.data.revision)).data.before == {'itemId':resource.data.itemId,'quantityMilli':resource.data.quantityMilli,'unit':resource.data.unit,'quantityVerified':resource.data.quantityVerified,'active':resource.data.active};
+        allow delete: if false;
+      }
+      match /purchaseChanges/{change} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['purchaseId','revision','before','after','actor','at'])
+          && request.resource.data.keys().hasOnly(['purchaseId','revision','before','after','actor','at'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time
+          && request.resource.data.revision is int && change == request.resource.data.purchaseId + '_' + string(request.resource.data.revision)
+          && getAfter(correctionPath(request.resource.data.purchaseId)).data.revision == request.resource.data.revision
+          && request.resource.data.revision == (exists(correctionPath(request.resource.data.purchaseId)) ? get(correctionPath(request.resource.data.purchaseId)).data.revision + 1 : 0);
+        allow update, delete: if false;
+      }
+      match /shopping/{entry} {
+        function validList(data) {
+          return data.keys().hasAll(['itemId','name','lastAdd','quantityMilli','unit','checked','assignedTo','notes','revision','updatedBy','updatedAt'])
+            && data.keys().hasOnly(['itemId','name','lastAdd','quantityMilli','unit','checked','assignedTo','notes','revision','updatedBy','updatedAt'])
+            && exists(catalogPath(data.itemId)) && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+            && data.quantityMilli is int && data.quantityMilli > 0 && data.quantityMilli <= 100000000000
+            && unit(data.unit) && data.checked is bool && data.notes is string && data.notes.size() <= 500
+            && (data.assignedTo == '' || data.assignedTo in get(housePath(id)).data.memberIds)
+            && data.revision is int && editedByMember(data);
+        }
+        allow read: if member(id);
+        allow create: if validList(request.resource.data) && request.resource.data.revision == 0
+          && getAfter(/databases/$(database)/documents/households/$(id)/shoppingEvents/$(request.resource.data.lastAdd)).data.listId == entry
+          && request.resource.data.quantityMilli == getAfter(/databases/$(database)/documents/households/$(id)/shoppingEvents/$(request.resource.data.lastAdd)).data.deltaMilli;
+        allow update: if validList(request.resource.data) && request.resource.data.itemId == resource.data.itemId
+          && request.resource.data.unit == resource.data.unit && request.resource.data.revision == resource.data.revision + 1
+          && ((request.resource.data.lastAdd == resource.data.lastAdd && request.resource.data.quantityMilli == resource.data.quantityMilli)
+            || (!exists(/databases/$(database)/documents/households/$(id)/shoppingEvents/$(request.resource.data.lastAdd))
+              && getAfter(/databases/$(database)/documents/households/$(id)/shoppingEvents/$(request.resource.data.lastAdd)).data.listId == entry
+              && request.resource.data.quantityMilli == (resource.data.checked ? 0 : resource.data.quantityMilli) + getAfter(/databases/$(database)/documents/households/$(id)/shoppingEvents/$(request.resource.data.lastAdd)).data.deltaMilli));
+        allow delete: if false;
+      }
+      match /shoppingEvents/{event} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['listId','deltaMilli','actor','at'])
+          && request.resource.data.keys().hasOnly(['listId','deltaMilli','actor','at'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time
+          && request.resource.data.deltaMilli is int && request.resource.data.deltaMilli > 0 && request.resource.data.deltaMilli <= 100000000000
+          && getAfter(/databases/$(database)/documents/households/$(id)/shopping/$(request.resource.data.listId)).data.lastAdd == event;
+        allow update, delete: if false;
+      }
+      function stockEventPath(event) { return /databases/$(database)/documents/households/$(id)/stockEvents/$(event); }
+      function stockPath(lot) { return /databases/$(database)/documents/households/$(id)/stock/$(lot); }
+      function purchasePath(purchase) { return /databases/$(database)/documents/households/$(id)/purchases/$(purchase); }
+      match /stock/{lot} {
+        function validStock(data) {
+          return data.keys().hasAll(['itemId','name','unit','quantityMilli','lowStockMilli','expiry','lastEvent','revision','updatedBy','updatedAt'])
+            && data.keys().hasOnly(['itemId','name','unit','quantityMilli','lowStockMilli','expiry','lastEvent','revision','updatedBy','updatedAt'])
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 100 && unit(data.unit)
+            && data.quantityMilli is int && data.quantityMilli >= 0 && data.quantityMilli <= 100000000000
+            && data.lowStockMilli is int && data.lowStockMilli >= 0 && data.lowStockMilli <= 100000000000
+            && (data.expiry == null || data.expiry is timestamp) && data.revision is int && editedByMember(data);
+        }
+        allow read: if member(id);
+        allow create: if validStock(request.resource.data) && request.resource.data.revision == 0
+          && request.resource.data.quantityMilli > 0
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.kind == 'restock'
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.lotId == lot
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.deltaMilli == request.resource.data.quantityMilli
+          && request.resource.data.itemId == get(purchasePath(getAfter(stockEventPath(request.resource.data.lastEvent)).data.purchaseId)).data.itemId;
+        allow update: if validStock(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantityMilli','lastEvent','revision','updatedBy','updatedAt'])
+          && request.resource.data.revision == resource.data.revision + 1
+          && !exists(stockEventPath(request.resource.data.lastEvent))
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.kind == 'consume'
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.lotId == lot
+          && getAfter(stockEventPath(request.resource.data.lastEvent)).data.deltaMilli < 0
+          && request.resource.data.quantityMilli == resource.data.quantityMilli + getAfter(stockEventPath(request.resource.data.lastEvent)).data.deltaMilli;
+        allow delete: if false;
+      }
+      match /stockEvents/{event} {
+        allow read: if member(id);
+        allow create: if member(id)
+          && request.resource.data.keys().hasAll(['lotId','purchaseId','deltaMilli','actor','at','kind'])
+          && request.resource.data.keys().hasOnly(['lotId','purchaseId','deltaMilli','actor','at','kind'])
+          && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time
+          && request.resource.data.deltaMilli is int && request.resource.data.deltaMilli != 0
+          && getAfter(stockPath(request.resource.data.lotId)).data.lastEvent == event
+          && ((request.resource.data.kind == 'restock' && event == 'receipt_' + request.resource.data.purchaseId
+            && !exists(stockPath(request.resource.data.lotId)) && exists(purchasePath(request.resource.data.purchaseId)))
+            || (request.resource.data.kind == 'consume' && request.resource.data.purchaseId == ''
+              && exists(stockPath(request.resource.data.lotId))));
+        allow update, delete: if false;
+      }
+      match /receiptSignatures/{expense} {
+        allow read: if member(id);
+        allow create: if member(id) && request.resource.data.keys().hasAll(['expenseId','signature','imageHash','createdBy','at'])
+          && request.resource.data.keys().hasOnly(['expenseId','signature','imageHash','createdBy','at'])
+          && request.resource.data.expenseId == expense && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.at == request.time && request.resource.data.signature.matches('^[a-f0-9]{64}$')
+          && (request.resource.data.imageHash == '' || request.resource.data.imageHash.matches('^[a-f0-9]{64}$'))
+          && exists(/databases/$(database)/documents/households/$(id)/expenses/$(expense));
+        allow update, delete: if false;
+      }
+
       match /expenses/{expenseId} {
         function validExpense(data) {
           return data.keys().hasAll(['merchant', 'payer', 'date', 'month', 'itemCount', 'total', 'createdBy', 'createdAt'])
@@ -152,7 +346,9 @@ service cloud.firestore {
             && !exists(parentPath())
             && getAfter(parentPath()).data.createdBy == request.auth.uid
             && getAfter(parentPath()).data.createdAt == request.time
-            && request.resource.data.keys().hasOnly(['index', 'name', 'amount'])
+            && request.resource.data.keys().hasOnly(['index', 'name', 'amount','quantityMilli','unit'])
+            && (!('quantityMilli' in request.resource.data) || (request.resource.data.quantityMilli is int && request.resource.data.quantityMilli > 0 && request.resource.data.quantityMilli <= 100000000 && request.resource.data.unit in ['each','g','kg','ml','l']))
+            && (!('unit' in request.resource.data) || 'quantityMilli' in request.resource.data)
             && request.resource.data.index is int && request.resource.data.index >= 0
             && request.resource.data.index < getAfter(parentPath()).data.itemCount
             && itemId == string(request.resource.data.index)

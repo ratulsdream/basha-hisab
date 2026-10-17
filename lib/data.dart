@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'domain.dart';
+import 'features/items/items_repository.dart';
 
 String friendlyError(Object error) {
   if (error is FirebaseException) {
@@ -71,9 +72,13 @@ class Expense {
 }
 
 class HouseholdRepository {
-  HouseholdRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : db = firestore ?? FirebaseFirestore.instance,
-      auth = auth ?? FirebaseAuth.instance;
+  HouseholdRepository({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+    this.enableItemIntelligence = false,
+  }) : db = firestore ?? FirebaseFirestore.instance,
+       auth = auth ?? FirebaseAuth.instance;
+  final bool enableItemIntelligence;
   final FirebaseFirestore db;
   final FirebaseAuth auth;
   String get uid => auth.currentUser!.uid;
@@ -288,7 +293,14 @@ class HouseholdRepository {
           );
           matches =
               saved.data()?['name'] == items[index].name &&
-              saved.data()?['amount'] == items[index].amount;
+              saved.data()?['amount'] == items[index].amount &&
+              (!enableItemIntelligence ||
+                  (saved.data()?['quantityMilli'] ==
+                          items[index].quantityMilli &&
+                      saved.data()?['unit'] ==
+                          (items[index].quantityMilli == null
+                              ? null
+                              : items[index].unit ?? 'each')));
         }
         if (!matches) {
           throw StateError(
@@ -312,11 +324,14 @@ class HouseholdRepository {
       });
       for (var index = 0; index < items.length; index++) {
         batch.set(expense.collection('items').doc('$index'), {
-          ...items[index].toMap(),
+          ...items[index].toMap(includeQuantity: enableItemIntelligence),
           'index': index,
         });
       }
     });
+    if (enableItemIntelligence) {
+      await ItemsRepository(db, uid, household.id).indexExpense(id);
+    }
   }
 }
 

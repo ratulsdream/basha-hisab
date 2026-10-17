@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../data.dart';
+import '../items/items_repository.dart';
+import '../items/restock_screen.dart';
 
 import '../../widgets/common.dart';
 
@@ -49,6 +51,23 @@ class _ExpenseDetailsState extends State<ExpenseDetails> {
           Text(DateFormat.yMMMMd().format(expense.date)),
           Text('Paid by ${household.name(expense.payer)}'),
           Text('Added by ${household.name(expense.creator)}'),
+          if (widget.repository.enableItemIntelligence && expense.itemCount > 0)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RestockScreen(
+                    repository: ItemsRepository(
+                      widget.repository.db,
+                      widget.repository.uid,
+                      household.id,
+                    ),
+                    expenseId: expense.id,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.kitchen),
+              label: const Text('Review kitchen restock'),
+            ),
           const Divider(height: 32),
           if (expense.itemCount == 0)
             const Text('No item breakdown was added.')

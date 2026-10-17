@@ -8,6 +8,7 @@ import '../../widgets/common.dart';
 import '../expenses/home_screen.dart';
 import 'group_selection.dart';
 import 'profile_screen.dart';
+import '../items/feature_gate.dart';
 
 class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key, this.repository});
@@ -17,7 +18,9 @@ class GroupsScreen extends StatefulWidget {
 }
 
 class _GroupsScreenState extends State<GroupsScreen> {
-  late final repository = widget.repository ?? HouseholdRepository();
+  late final repository =
+      widget.repository ??
+      HouseholdRepository(enableItemIntelligence: v3ItemsEnabled);
   late Stream<QuerySnapshot<Map<String, dynamic>>> _memberships = repository
       .watchMemberships();
   GroupSelection? _selection;

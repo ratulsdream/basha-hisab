@@ -41,10 +41,19 @@ String monthKey(DateTime date) =>
     '${date.year}-${date.month.toString().padLeft(2, '0')}';
 
 class ExpenseItem {
-  const ExpenseItem(this.name, this.amount);
+  const ExpenseItem(this.name, this.amount, {this.quantityMilli, this.unit});
   final String name;
   final int amount;
-  Map<String, Object> toMap() => {'name': name, 'amount': amount};
+  final int? quantityMilli;
+  final String? unit;
+  Map<String, Object> toMap({bool includeQuantity = false}) => {
+    'name': name,
+    'amount': amount,
+    if (includeQuantity && quantityMilli != null) ...{
+      'quantityMilli': quantityMilli!,
+      'unit': unit ?? 'each',
+    },
+  };
 }
 
 class ReceiptDraft {
@@ -55,6 +64,7 @@ class ReceiptDraft {
     this.items = const [],
     this.rawText = '',
     this.warnings = const [],
+    this.imageHash,
   });
   final String merchant;
   final DateTime? date;
@@ -62,6 +72,7 @@ class ReceiptDraft {
   final List<ExpenseItem> items;
   final String rawText;
   final List<String> warnings;
+  final String? imageHash;
 }
 
 /// Normalize Greek tonos and final sigma for matching, preserving original display text.
@@ -159,17 +170,32 @@ ReceiptDraft parseReceipt(String text) {
           .substring(0, price.start)
           .replaceAll(RegExp(r'[\s:€£$]+$'), '')
           .trim();
-      // Quantity x unit-price followed by line-total: keep the charged line total.
-      name = name
-          .replaceAll(
-            RegExp(r'\s+\d+(?:[.,]\d+)?\s*[xX×*]\s*€?\s*\d+[.,]\d{2}\s*$'),
-            '',
-          )
-          .trim();
+      // Retain explicit quantity/unit as suggestions, never infer package size.
+      final quantityPattern = RegExp(
+        r'\s+(\d+(?:[.,]\d{1,3})?)\s*(kg|g|ml|l)?\s*[xX×*]\s*€?\s*\d+[.,]\d{2}\s*$',
+        caseSensitive: false,
+      );
+      final quantityMatch = quantityPattern.firstMatch(name);
+      int? quantityMilli;
+      String? unit;
+      if (quantityMatch != null) {
+        final parts = quantityMatch.group(1)!.replaceAll(',', '.').split('.');
+        quantityMilli =
+            int.parse(parts[0]) * 1000 +
+            (parts.length == 1 ? 0 : int.parse(parts[1].padRight(3, '0')));
+        unit = quantityMatch.group(2)?.toLowerCase() ?? 'each';
+        if (quantityMilli <= 0 || quantityMilli > 100000000) {
+          quantityMilli = null;
+          unit = null;
+        }
+        name = name.substring(0, quantityMatch.start).trim();
+      }
       if (amount != null &&
           RegExp(r'[A-Za-z\u0370-\u03ff\u1f00-\u1fff]').hasMatch(name) &&
           items.length < 100) {
-        items.add(ExpenseItem(name, amount));
+        items.add(
+          ExpenseItem(name, amount, quantityMilli: quantityMilli, unit: unit),
+        );
       }
     } else if (merchant.isEmpty &&
         RegExp(r'[A-Za-z\u0370-\u03ff\u1f00-\u1fff]').hasMatch(line) &&

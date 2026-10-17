@@ -1,4 +1,6 @@
-# BashaHisab v2
+# BashaHisab v3 — Smart Household Edition
+
+Incremental issue #1 implementation: [phase tracker](docs/v3/STATUS.md), [Phase 0](docs/v3/PHASE_0.md), [Phase 1](docs/v3/PHASE_1.md). Production rules are not deployed automatically; new modules default to a closed security gate pending deployed-rule verification.
 
 Flutter Android/iOS shared expenses, upgraded in place from v1. Personal Firebase
 Email/Password accounts can belong to multiple Groups / Homes. Each new group
