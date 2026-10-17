@@ -1,0 +1,24 @@
+{
+  "name": "BashaHisab-v3-phase-2-debug.apk",
+  "source_commit": "9b668889f3690e6f9e23b40e0b8650a91ae935e1",
+  "bytes": 184563995,
+  "sha256": "cb0435f81f04cb4d7c10b903a0858d954ce6118c14bbe31721749890497aebb6",
+  "parts": [
+    {
+      "name": "debug.part-000",
+      "sha256": "0c456f524e43290395f0085b6c58fcab377757ad8d7b7a6fadba5a7c0fa90e3e"
+    },
+    {
+      "name": "debug.part-001",
+      "sha256": "8a0ff23ef748049c3ca4573b5108f308af3f8ebb4b4530bf35e5d61d70cccbb5"
+    },
+    {
+      "name": "debug.part-002",
+      "sha256": "de80c15abfd21bc03ed0ef74ce39b6d77b26542ec95962769834f8d60ba8b37c"
+    },
+    {
+      "name": "debug.part-003",
+      "sha256": "7a46135b569dc1b145d4285e152662acf511078b2c16adaf04b0ee546fbb30e4"
+    }
+  ]
+}
