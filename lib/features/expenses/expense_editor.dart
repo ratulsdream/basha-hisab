@@ -1,3 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
+import 'dart:async';
+import '../sync/outbox_store.dart';
+import '../sync/outbox_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -64,6 +68,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
   late final String _id = widget.repository.newExpenseId(widget.household.id);
   bool _saving = false, _reviewed = false, _checkingDuplicate = false;
   String? _acknowledgedDuplicate;
+  bool _duplicateOverride = false;
   bool _personal = false, _refund = false;
   String _category = 'uncategorized', _splitMode = 'equal';
   final _splitValue = TextEditingController(text: '50');
@@ -179,20 +184,24 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
           (i) => (name: i.name.text, amount: parseMoney(i.amount.text)!),
         ),
       );
-      if (_acknowledgedDuplicate != signature) {
+      final duplicateKey = '$_personal:$signature';
+      if (_acknowledgedDuplicate != duplicateKey) {
+        _duplicateOverride = false;
         setState(() => _checkingDuplicate = true);
         try {
-          final matches = _personal
-              ? await PlanningRepository(
-                  widget.repository.db,
-                  widget.repository.uid,
-                  widget.household.id,
-                ).personalDuplicates(signature, widget.draft.imageHash)
-              : await ItemsRepository(
-                  widget.repository.db,
-                  widget.repository.uid,
-                  widget.household.id,
-                ).duplicates(signature, widget.draft.imageHash);
+          final matches =
+              await (_personal
+                      ? PlanningRepository(
+                          widget.repository.db,
+                          widget.repository.uid,
+                          widget.household.id,
+                        ).personalDuplicates(signature, widget.draft.imageHash)
+                      : ItemsRepository(
+                          widget.repository.db,
+                          widget.repository.uid,
+                          widget.household.id,
+                        ).duplicates(signature, widget.draft.imageHash))
+                  .timeout(const Duration(seconds: 4));
           if (matches.any((m) => m.expenseId != _id)) {
             if (!mounted) return;
             final proceed = await showDialog<bool>(
@@ -215,8 +224,20 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
               ),
             );
             if (proceed != true) return;
+            _duplicateOverride = true;
           }
-          _acknowledgedDuplicate = signature;
+          _acknowledgedDuplicate = duplicateKey;
+        } on FirebaseException catch (e) {
+          if (![
+            'unavailable',
+            'deadline-exceeded',
+            'network-request-failed',
+          ].contains(e.code)) {
+            if (mounted) setState(() => _error = friendlyError(e));
+            return;
+          }
+        } on TimeoutException {
+          // The durable outbox checks duplicates again before sending.
         } catch (e) {
           if (mounted) setState(() => _error = friendlyError(e));
           return;
@@ -231,28 +252,51 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
     });
     try {
       if (widget.repository.enableItemIntelligence) {
-        await widget.repository.savePlannedExpense(
-          personal: _personal,
-          category: _category,
-          refund: _refund,
-          splitCents: splitCents,
-          household: widget.household,
-          id: _id,
-          merchant: _merchant.text.trim(),
-          payer: _payer,
-          date: _date,
-          items: _items
-              .map(
-                (item) => ExpenseItem(
-                  item.name.text.trim(),
-                  parseMoney(item.amount.text)!,
-                  quantityMilli: quantityMilliInput(item.quantity.text),
-                  unit: item.unit,
-                ),
-              )
-              .toList(),
-          total: total,
+        final store = await OutboxStore.open(widget.repository.uid);
+        await store.enqueue(
+          QueuedExpense({
+            'id': _id,
+            'owner': widget.repository.uid,
+            'groupId': widget.household.id,
+            'members': widget.household.members,
+            'merchant': _merchant.text.trim(),
+            'payer': _payer,
+            'date': DateFormat('yyyy-MM-dd').format(_date),
+            'total': total,
+            'items': _items
+                .map(
+                  (item) => ExpenseItem(
+                    item.name.text.trim(),
+                    parseMoney(item.amount.text)!,
+                    quantityMilli: quantityMilliInput(item.quantity.text),
+                    unit: item.unit,
+                  ).toMap(includeQuantity: true),
+                )
+                .toList(),
+            'personal': _personal,
+            'category': _category,
+            'refund': _refund,
+            'splitCents': splitCents,
+            'signature': signature,
+            'imageHash': widget.draft.imageHash,
+            'duplicateOverride': _duplicateOverride,
+          }),
         );
+        unawaited(
+          OutboxService(
+            store,
+            widget.repository,
+          ).drain().catchError((Object _) {}),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Saved on this phone. Open Pending drafts to check server sync.',
+              ),
+            ),
+          );
+        }
       } else {
         await widget.repository.saveExpense(
           household: widget.household,
@@ -272,21 +316,6 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
               .toList(),
           total: total,
         );
-      }
-      if (signature != null) {
-        if (_personal) {
-          await PlanningRepository(
-            widget.repository.db,
-            widget.repository.uid,
-            widget.household.id,
-          ).recordPersonalSignature(_id, signature, widget.draft.imageHash);
-        } else {
-          await ItemsRepository(
-            widget.repository.db,
-            widget.repository.uid,
-            widget.household.id,
-          ).recordSignature(_id, signature, widget.draft.imageHash);
-        }
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {

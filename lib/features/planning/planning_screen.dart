@@ -1,3 +1,4 @@
+import '../exports/export_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -439,6 +440,19 @@ class _PlanningScreenState extends State<PlanningScreen> {
         appBar: AppBar(
           title: Text(widget.household.title),
           actions: [
+            IconButton(
+              tooltip: 'Export month',
+              icon: const Icon(Icons.ios_share),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ExportScreen(
+                    repository: widget.repository,
+                    home: widget.household,
+                    month: month,
+                  ),
+                ),
+              ),
+            ),
             IconButton(
               tooltip: 'Change group filter',
               onPressed: busy ? null : _switchGroup,

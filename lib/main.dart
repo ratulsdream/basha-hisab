@@ -1,3 +1,5 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'features/notifications/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -14,6 +16,9 @@ Future<void> main() async {
       ], await rootBundle.loadString('assets/licenses/$name.txt'));
     }
     yield LicenseEntryWithLineBreaks([
+      'DejaVu Sans',
+    ], await rootBundle.loadString('assets/fonts/LICENSE.txt'));
+    yield LicenseEntryWithLineBreaks([
       'tessdata_fast Greek and English',
     ], await rootBundle.loadString('assets/tessdata/LICENSE'));
   });
@@ -21,6 +26,9 @@ Future<void> main() async {
   try {
     // Native Firebase configs are injected by the developer or CI, never Storage.
     await Firebase.initializeApp();
+    if (remoteNotificationsEnabled) {
+      FirebaseMessaging.onBackgroundMessage(notificationBackground);
+    }
   } catch (error) {
     initializationError = error;
   }

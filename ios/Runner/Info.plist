@@ -49,5 +49,9 @@
     <string>Take a receipt photo to extract expense details on your device.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Select a receipt to extract expense details on your device.</string>
+	<key>UIBackgroundModes</key>
+	<array><string>remote-notification</string></array>
+	<key>FirebaseMessagingAutoInitEnabled</key>
+	<false/>
 </dict>
 </plist>

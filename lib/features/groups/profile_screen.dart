@@ -63,6 +63,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(data['email'] as String? ?? ''),
             const SizedBox(height: 12),
             SelectableText('Account ID: ${widget.repository.uid}'),
+            if (data['createdAt'] is Timestamp)
+              Text(
+                'Account created: ${(data['createdAt'] as Timestamp).toDate().toLocal().toIso8601String().split('T').first}',
+              ),
             const SizedBox(height: 24),
             TextField(
               controller: _name,
@@ -80,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => showLicensePage(
                 context: context,
                 applicationName: 'BashaHisab',
-                applicationVersion: '2.0.0',
+                applicationVersion: '3.0.0-phase.3',
               ),
             ),
             const Text(

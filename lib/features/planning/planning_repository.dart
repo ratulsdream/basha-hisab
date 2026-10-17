@@ -24,16 +24,25 @@ class PlanningRepository {
       db.collection('users').doc(uid).collection('personalReceiptSignatures');
   Future<List<DuplicateMatch>> personalDuplicates(
     String signature,
-    String? imageHash,
-  ) async {
+    String? imageHash, {
+    bool serverOnly = false,
+  }) async {
     final matches = await privateSignatures
         .where('signature', isEqualTo: signature)
-        .get();
+        .get(
+          GetOptions(
+            source: serverOnly ? Source.server : Source.serverAndCache,
+          ),
+        );
     final rows = {for (final d in matches.docs) d.id: d.data()};
     if (imageHash != null) {
       final images = await privateSignatures
           .where('imageHash', isEqualTo: imageHash)
-          .get();
+          .get(
+            GetOptions(
+              source: serverOnly ? Source.server : Source.serverAndCache,
+            ),
+          );
       for (final d in images.docs) {
         rows[d.id] = d.data();
       }

@@ -1,3 +1,7 @@
+import '../notifications/notification_service.dart';
+import '../notifications/notification_screen.dart';
+import '../sync/outbox_service.dart';
+import '../sync/outbox_screen.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,16 +24,34 @@ class GroupsScreen extends StatefulWidget {
 class _GroupsScreenState extends State<GroupsScreen> {
   late final repository =
       widget.repository ??
-      HouseholdRepository(enableItemIntelligence: v3ItemsEnabled);
+      HouseholdRepository(
+        enableItemIntelligence: v3ItemsEnabled,
+        boundUid: FirebaseAuth.instance.currentUser?.uid,
+      );
   late Stream<QuerySnapshot<Map<String, dynamic>>> _memberships = repository
       .watchMemberships();
+  HomeNotifications? _notifications;
+  OutboxRunner? _outbox;
   GroupSelection? _selection;
   Object? _error;
   bool _loading = true, _restored = false;
   @override
   void initState() {
     super.initState();
+    if (repository.enableItemIntelligence) {
+      _notifications = HomeNotifications(repository);
+      unawaited(_notifications!.start().catchError((Object _) {}));
+      _outbox = OutboxRunner(repository);
+      unawaited(_outbox!.start().catchError((Object _) {}));
+    }
     _initialize();
+  }
+
+  @override
+  void dispose() {
+    _outbox?.stop();
+    unawaited(_notifications?.stop() ?? Future.value());
+    super.dispose();
   }
 
   Future<void> _initialize() async {
@@ -74,6 +96,33 @@ class _GroupsScreenState extends State<GroupsScreen> {
     appBar: AppBar(
       title: const Text('My Groups / Homes'),
       actions: [
+        if (repository.enableItemIntelligence)
+          IconButton(
+            tooltip: 'Notifications',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => NotificationScreen(repository: repository),
+                ),
+              );
+              await _notifications?.stop();
+              if (mounted) {
+                _notifications = HomeNotifications(repository);
+                await _notifications!.start();
+              }
+            },
+          ),
+        if (repository.enableItemIntelligence)
+          IconButton(
+            tooltip: 'Pending drafts',
+            icon: const Icon(Icons.cloud_upload_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OutboxScreen(repository: repository),
+              ),
+            ),
+          ),
         IconButton(
           tooltip: 'Personal profile',
           icon: const Icon(Icons.person_outline),

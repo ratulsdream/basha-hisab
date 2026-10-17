@@ -53,6 +53,30 @@ service cloud.firestore {
       return getAfter(minePath(uid, id)).data == getAfter(memberPath(id, uid)).data;
     }
     match /users/{uid} {
+      match /preferences/{preference} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid && preference == 'notifications'
+          && request.resource.data.keys().hasOnly(['enabled','remote','zone','kinds','updatedAt'])
+          && request.resource.data.enabled is bool && request.resource.data.remote is bool
+          && request.resource.data.zone in ['Europe/Nicosia','Europe/Athens','Europe/London','Asia/Dhaka','UTC']
+          && request.resource.data.kinds.keys().hasOnly(['expense','shopping','stock','recurring','settlement','budget'])
+          && request.resource.data.kinds.keys().hasAll(['expense','shopping','stock','recurring','settlement','budget'])
+          && request.resource.data.kinds.expense is bool && request.resource.data.kinds.shopping is bool
+          && request.resource.data.kinds.stock is bool && request.resource.data.kinds.recurring is bool
+          && request.resource.data.kinds.settlement is bool && request.resource.data.kinds.budget is bool
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+      match /devices/{device} {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && device.matches('^[a-f0-9]{64}$')
+          && request.resource.data.keys().hasOnly(['token','platform','enabled','updatedAt'])
+          && request.resource.data.token is string && request.resource.data.token.size() > 0 && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform in ['android','ios'] && request.resource.data.enabled is bool
+          && request.resource.data.updatedAt == request.time;
+      }
+
       allow get: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn() && request.auth.uid == uid
         && validProfile(request.resource.data, uid)

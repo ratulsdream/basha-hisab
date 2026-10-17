@@ -23,7 +23,9 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test packages/local_receipt_ocr/lib
       - run: flutter analyze
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: flutter test
+      - run: node --test functions/notifications.test.cjs
   apk:
     needs: checks
     runs-on: ubuntu-latest

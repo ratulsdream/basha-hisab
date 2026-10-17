@@ -345,18 +345,27 @@ class ItemsRepository {
 
   Future<List<DuplicateMatch>> duplicates(
     String signature,
-    String? imageHash,
-  ) async {
-    final snapshot = await collection(
-      'receiptSignatures',
-    ).where('signature', isEqualTo: signature).get();
+    String? imageHash, {
+    bool serverOnly = false,
+  }) async {
+    final snapshot = await collection('receiptSignatures')
+        .where('signature', isEqualTo: signature)
+        .get(
+          GetOptions(
+            source: serverOnly ? Source.server : Source.serverAndCache,
+          ),
+        );
     final rows = <String, Map<String, dynamic>>{
       for (final d in snapshot.docs) d.id: d.data(),
     };
     if (imageHash != null && imageHash.isNotEmpty) {
-      final images = await collection(
-        'receiptSignatures',
-      ).where('imageHash', isEqualTo: imageHash).get();
+      final images = await collection('receiptSignatures')
+          .where('imageHash', isEqualTo: imageHash)
+          .get(
+            GetOptions(
+              source: serverOnly ? Source.server : Source.serverAndCache,
+            ),
+          );
       for (final d in images.docs) {
         rows[d.id] = d.data();
       }

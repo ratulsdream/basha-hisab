@@ -20,7 +20,7 @@ String friendlyError(Object error) {
       'network-request-failed' || 'unavailable' =>
         'Cannot reach the server. Check your connection and try again.',
       'permission-denied' =>
-        'This action is not allowed. The group may be full or its membership changed. Check the invite, reopen the group, and verify the v2 Firestore rules are deployed.',
+        'This action is not allowed. The group may be full or its membership changed. Check the invite, reopen the group, and verify the current Firestore rules are deployed.',
       'too-many-requests' => 'Too many attempts. Please wait and try again.',
       'failed-precondition' =>
         'Firebase is not ready. Check that Firestore is enabled and its rules are deployed.',
@@ -87,12 +87,23 @@ class HouseholdRepository {
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
     this.enableItemIntelligence = false,
+    String? boundUid,
   }) : db = firestore ?? FirebaseFirestore.instance,
-       auth = auth ?? FirebaseAuth.instance;
+       auth = auth ?? FirebaseAuth.instance,
+       _boundUid = boundUid;
+  final String? _boundUid;
   final bool enableItemIntelligence;
   final FirebaseFirestore db;
   final FirebaseAuth auth;
-  String get uid => auth.currentUser!.uid;
+  String get uid {
+    if (_boundUid != null && auth.currentUser?.uid != _boundUid) {
+      throw StateError(
+        'The signed-in account changed. Your original drafts remain with their owner.',
+      );
+    }
+    return _boundUid ?? auth.currentUser!.uid;
+  }
+
   DocumentReference<Map<String, dynamic>> get profile =>
       db.collection('users').doc(uid);
   Stream<DocumentSnapshot<Map<String, dynamic>>> watchProfile() =>

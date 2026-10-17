@@ -13,10 +13,13 @@ PHASE_1.md for scope, migration and enablement boundary.
 
 Phase 2 now implements features 8–14 as a gated candidate; see PHASE_2.md.
 
-Remaining work proceeds in issue order:
+Phase 3 implements features 15–18 as a gated candidate; see PHASE_3.md for
+notification configuration, export privacy and durable offline queue behavior.
 
-- Phase 3 (15–18): notification preferences and local/background configuration,
-  PDF/Excel export, durable offline queue/synchronization, profile/group polish.
+All 18 issue features now have repository implementations. This is not a
+production rollout completion: the deployed-rule comparison remains blocked,
+and remote push/APNs and physical-device acceptance require owner environment
+configuration/testing. Standard APKs keep v3 modules closed pending that audit.
 
 Production security audit, production rollout, APNs/Apple setup and physical
 device acceptance are separate from repository implementation. No APK should be

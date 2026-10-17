@@ -339,3 +339,20 @@ test('budgets, recurring templates and deterministic confirmed occurrences are s
  await assertSucceeds(setDoc(doc(database,'households/home/expenses/recurring_rent_2026-10'),expense({merchant:'Rent',total:10000,recurringId:'rent',recurringMonth:'2026-10'})));
  await assertFails(getDocs(collection(db('outsider'),'households/home/recurring')));
 });
+
+test('notification preferences and device tokens are owner-only and schema constrained', async () => {
+  const alice=db('alice'), bob=db('bob');
+  const settings={enabled:true,remote:false,zone:'Europe/Nicosia',kinds:{expense:true,shopping:false,stock:false,recurring:false,settlement:false,budget:false},updatedAt:serverTimestamp()};
+  const target=doc(alice,'users/alice/preferences/notifications');
+  await assertSucceeds(setDoc(target,settings));
+  await assertFails(getDoc(doc(bob,'users/alice/preferences/notifications')));
+  await assertFails(setDoc(doc(bob,'users/alice/preferences/notifications'),settings));
+  await assertFails(setDoc(target,{...settings,allowAnyGroup:true}));
+  await assertFails(setDoc(target,{...settings,kinds:{expense:true}}));
+  const device='a'.repeat(64), token={token:'test-device-token',platform:'android',enabled:true,updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(alice,`users/alice/devices/${device}`),token));
+  await assertFails(getDoc(doc(bob,`users/alice/devices/${device}`)));
+  await assertFails(setDoc(doc(bob,`users/alice/devices/${device}`),token));
+  await assertFails(setDoc(doc(alice,`users/alice/devices/${device}`),{...token,groupId:'foreign'}));
+  await assertFails(setDoc(doc(alice,'notificationDeliveries/forged'),{uid:'alice'}));
+});
