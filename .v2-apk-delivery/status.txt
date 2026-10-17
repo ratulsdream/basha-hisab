@@ -1,0 +1,2 @@
+artifact_url=https://github.com/ratulsdream/basha-hisab/actions/runs/39074162146/artifacts/12116441766
+run_url=https://github.com/ratulsdream/basha-hisab/actions/runs/39074162146
