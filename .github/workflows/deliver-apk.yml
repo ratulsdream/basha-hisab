@@ -1,4 +1,4 @@
-name: Download verified BashaHisab v2 APK
+name: Download verified BashaHisab APK
 on:
   push:
     branches: [delivery/v2-apk]
@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify and reassemble the already-built APK
+        id: verify
         run: |
           python3 - <<'PY'
           import hashlib, json, re
@@ -20,7 +21,9 @@ jobs:
           source = Path('.v2-apk-delivery')
           manifest = json.loads((source / 'manifest.json').read_text())
           assert re.fullmatch('[a-f0-9]{40}', manifest['source_commit'])
-          assert manifest['name'] == 'BashaHisab-v2-debug.apk'
+          assert re.fullmatch(r'BashaHisab-(?:v2|v3-phase-[0-3])-debug\.apk', manifest['name'])
+          with open(__import__('os').environ['GITHUB_OUTPUT'], 'a') as outputs:
+              outputs.write('artifact_name=' + manifest['name'][:-4] + '\n')
           target = Path('download')
           target.mkdir()
           digest = hashlib.sha256()
@@ -38,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         id: apk
         with:
-          name: BashaHisab-v2-debug
+          name: ${{ steps.verify.outputs.artifact_name }}
           path: download/
           if-no-files-found: error
           retention-days: 30

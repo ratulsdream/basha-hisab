@@ -193,3 +193,14 @@ test('leaving cannot rewrite the frozen legacy participant pair', async () => {
   batch.delete(doc(database,'households/home/members/bob'));
   await assertFails(batch.commit());
 });
+test('unimplemented receipt/invoice/settlement modules default to deny, even for members', async () => {
+  await createHome();
+  for (const path of ['households/home/receipts/r','households/home/invoices/i','households/home/settlements/s','receipts/public']) {
+    await assertFails(setDoc(doc(db('alice'),path),{text:'private derived data'}));
+    await assertFails(getDoc(doc(db('outsider'),path)));
+  }
+});
+test('former membership cannot authorize a new expense after leaving', async () => {
+  await createHome(); await join('bob'); await leave('alice');
+  await assertFails(setDoc(doc(db('alice'),'households/home/expenses/stale'),expense()));
+});

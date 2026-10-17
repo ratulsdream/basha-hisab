@@ -270,25 +270,53 @@ class HouseholdRepository {
         .doc(household.id)
         .collection('expenses')
         .doc(id);
-    final batch = db.batch();
-    batch.set(expense, {
-      'merchant': merchant,
-      'payer': payer,
-      'date': Timestamp.fromDate(DateTime.utc(date.year, date.month, date.day)),
-      'month': monthKey(date),
-      'itemCount': items.length,
-      if (household.members.length >= 2) 'splitBetween': household.members,
-      'total': total,
-      'createdBy': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    for (var index = 0; index < items.length; index++) {
-      batch.set(expense.collection('items').doc('$index'), {
-        ...items[index].toMap(),
-        'index': index,
+    await db.runTransaction((batch) async {
+      final existing = await batch.get(expense);
+      if (existing.exists) {
+        final data = existing.data()!;
+        final sameDate = (data['date'] as Timestamp).toDate().toUtc();
+        var matches =
+            data['createdBy'] == uid &&
+            data['merchant'] == merchant &&
+            data['payer'] == payer &&
+            data['total'] == total &&
+            sameDate == DateTime.utc(date.year, date.month, date.day) &&
+            data['itemCount'] == items.length;
+        for (var index = 0; index < items.length && matches; index++) {
+          final saved = await batch.get(
+            expense.collection('items').doc('$index'),
+          );
+          matches =
+              saved.data()?['name'] == items[index].name &&
+              saved.data()?['amount'] == items[index].amount;
+        }
+        if (!matches) {
+          throw StateError(
+            'This expense ID already contains different saved details. Reopen it from history before making corrections.',
+          );
+        }
+        return; // Lost acknowledgement / retry: the identical expense is already saved.
+      }
+      batch.set(expense, {
+        'merchant': merchant,
+        'payer': payer,
+        'date': Timestamp.fromDate(
+          DateTime.utc(date.year, date.month, date.day),
+        ),
+        'month': monthKey(date),
+        'itemCount': items.length,
+        if (household.members.length >= 2) 'splitBetween': household.members,
+        'total': total,
+        'createdBy': uid,
+        'createdAt': FieldValue.serverTimestamp(),
       });
-    }
-    await batch.commit();
+      for (var index = 0; index < items.length; index++) {
+        batch.set(expense.collection('items').doc('$index'), {
+          ...items[index].toMap(),
+          'index': index,
+        });
+      }
+    });
   }
 }
 
