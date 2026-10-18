@@ -2,12 +2,14 @@
 
 ## Current outcome
 
-Repository audit and isolated tests are complete. Production verification and
-activation CANNOT complete without the actual published rules. No Firebase CLI
-account/tokens, gcloud executable or Google application-default credentials are
-available in this environment. Native google-services.json and iOS plist are
-app configuration, not permission to export or publish security rules. GitHub
-access does not grant Firebase administration.
+Repository audit and isolated tests are complete. On 2026-10-18 the owner supplied
+an authenticated Cloud Shell export of the published rules. The complete
+[comparison and proposed deployment scope](DEPLOYED_RULES_COMPARISON.md) records
+the policy differences, hashes and both emulator results. Production deployment
+and activation still await explicit approval and post-deployment verification.
+No Firebase administrative sign-in is available in this environment; the export
+was made in the owner's Google session. Native app configuration and GitHub
+access do not grant Firebase administration.
 
 No production rules, documents, indexes, Functions or remote configuration have
 been deployed, replaced or deleted. The dashboard uses existing reads and the
@@ -15,7 +17,7 @@ same additive account recovery; simply viewing it writes no financial data.
 V3_ENABLED and V3_ITEMS_ENABLED remain false in normal builds. A different UI
 state does not confer database access. Rules are always the server authority.
 
-## Beginner-friendly: provide the published rules
+## Export instructions for future reviews (current export already received)
 
 The easiest method needs a computer for a few minutes:
 
