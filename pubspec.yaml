@@ -1,11 +1,13 @@
 name: basha_hisab
 description: Shared household expenses for two roommates.
 publish_to: none
-version: 3.0.0-phase.3+7
+version: 3.1.0-dashboard+8
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   firebase_core: 4.15.0
   firebase_auth: 6.7.0
@@ -41,3 +43,13 @@ flutter:
     - assets/tessdata/
     - assets/licenses/
     - assets/fonts/
+
+  fonts:
+    - family: BashaBengali
+      fonts:
+        - asset: assets/fonts/NotoSansBengali-Regular.ttf
+        - asset: assets/fonts/NotoSansBengali-Bold.ttf
+          weight: 700
+    - family: BashaGreek
+      fonts:
+        - asset: assets/fonts/DejaVuSans.ttf

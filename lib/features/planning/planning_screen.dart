@@ -1,3 +1,5 @@
+import 'package:basha_hisab/l10n/app_text.dart';
+import '../shell/feature_availability.dart';
 import '../exports/export_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -15,9 +17,11 @@ class PlanningScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.household,
+    this.initialTab = 0,
   });
   final HouseholdRepository repository;
   final Household household;
+  final int initialTab;
   @override
   State<PlanningScreen> createState() => _PlanningScreenState();
 }
@@ -266,7 +270,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -425,17 +429,16 @@ class _PlanningScreenState extends State<PlanningScreen> {
   Widget build(BuildContext context) {
     if (!widget.repository.enableItemIntelligence) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Planning & settlement')),
-        body: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'New planning tools await verified Firestore rules. Existing household expenses remain available.',
-          ),
+        appBar: AppBar(title: const AppText('Planning & settlement')),
+        body: FeatureAvailability(
+          features: planningFeatures,
+          onHistory: () => Navigator.pop(context),
         ),
       );
     }
     return DefaultTabController(
       length: 6,
+      initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.household.title),
@@ -462,12 +465,12 @@ class _PlanningScreenState extends State<PlanningScreen> {
           bottom: const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(text: 'Reports & budget'),
-              Tab(text: 'Repayments'),
-              Tab(text: 'Recurring'),
-              Tab(text: 'Search'),
-              Tab(text: 'Personal'),
-              Tab(text: 'Corrections'),
+              Tab(child: AppText('Reports & budget')),
+              Tab(child: AppText('Repayments')),
+              Tab(child: AppText('Recurring')),
+              Tab(child: AppText('Search')),
+              Tab(child: AppText('Personal')),
+              Tab(child: AppText('Corrections')),
             ],
           ),
         ),

@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
 import 'dart:async';
 import '../sync/outbox_store.dart';
@@ -340,7 +341,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
     canPop: !_saving,
     child: Scaffold(
       appBar: AppBar(
-        title: Text(widget.fromReceipt ? 'Review receipt' : 'Add expense'),
+        title: AppText(widget.fromReceipt ? 'Review receipt' : 'Add expense'),
       ),
       body: AbsorbPointer(
         absorbing: _saving,
@@ -418,7 +419,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                 controller: _merchant,
                 maxLength: 100,
                 decoration: InputDecoration(
-                  labelText: 'Merchant / expense name',
+                  labelText: tr(context, 'Merchant / expense name'),
                   helperText:
                       widget.fromReceipt && widget.draft.merchant.isEmpty
                       ? 'Not detected — enter merchant'
@@ -435,7 +436,9 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: _payer,
-                decoration: const InputDecoration(labelText: 'Who paid?'),
+                decoration: InputDecoration(
+                  labelText: tr(context, 'Who paid?'),
+                ),
                 items: widget.household.members
                     .where((uid) => !_personal || uid == widget.repository.uid)
                     .map(
@@ -496,8 +499,8 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                             child: TextFormField(
                               controller: _items[i].amount,
                               onChanged: (_) => setState(() {}),
-                              decoration: const InputDecoration(
-                                labelText: 'Price',
+                              decoration: InputDecoration(
+                                labelText: tr(context, 'Price'),
                               ),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -532,8 +535,11 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Reviewed quantity (optional)',
+                                decoration: InputDecoration(
+                                  labelText: tr(
+                                    context,
+                                    'Reviewed quantity (optional)',
+                                  ),
                                   helperText: 'Leave blank when unknown',
                                 ),
                               ),
@@ -564,7 +570,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
                     ? () => setState(() => _items.add(_ItemFields()))
                     : null,
                 icon: const Icon(Icons.add),
-                label: const Text('Add item'),
+                label: const AppText('Add item'),
               ),
               if (_items.isNotEmpty)
                 TextButton(
@@ -636,7 +642,7 @@ class _ExpenseEditorState extends State<ExpenseEditor> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
+                  child: AppText(
                     _error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,

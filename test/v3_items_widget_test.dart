@@ -26,7 +26,7 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('awaiting verification'), findsOneWidget);
+      expect(find.text('Security review needed'), findsOneWidget);
       expect(find.byType(TabBar), findsNothing);
     },
   );

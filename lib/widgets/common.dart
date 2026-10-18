@@ -1,3 +1,4 @@
+import '../l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../data.dart';
@@ -6,7 +7,7 @@ String displayMoney(String currency, int cents) =>
     '$currency ${NumberFormat('#,##0.00').format(cents / 100)}';
 void showError(BuildContext context, Object error) => ScaffoldMessenger.of(
   context,
-).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+).showSnackBar(SnackBar(content: AppText(friendlyError(error))));
 
 class Busy extends StatelessWidget {
   const Busy({super.key, this.message = 'Loading…'});
@@ -20,7 +21,7 @@ class Busy extends StatelessWidget {
         children: [
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
-          Text(message),
+          AppText(message),
         ],
       ),
     ),
@@ -38,9 +39,9 @@ class RetryMessage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(friendlyError(error), textAlign: TextAlign.center),
+          AppText(friendlyError(error), textAlign: TextAlign.center),
           const SizedBox(height: 12),
-          FilledButton(onPressed: retry, child: const Text('Try again')),
+          FilledButton(onPressed: retry, child: const AppText('Try again')),
         ],
       ),
     ),

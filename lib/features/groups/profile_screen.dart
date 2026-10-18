@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../data.dart';
@@ -28,7 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Profile saved')));
+        ).showSnackBar(const SnackBar(content: AppText('Profile saved')));
       }
     } catch (error) {
       if (mounted) showError(context, error);
@@ -39,7 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Personal profile')),
+    appBar: AppBar(title: const AppText('Personal profile')),
     body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _profile,
       builder: (context, snapshot) {
@@ -72,14 +73,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               controller: _name,
               maxLength: 50,
               enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'Display name'),
+              decoration: InputDecoration(
+                labelText: tr(context, 'Display name'),
+              ),
             ),
             FilledButton(
               onPressed: _busy ? null : _save,
               child: Text(_busy ? 'Saving…' : 'Save profile'),
             ),
             ListTile(
-              title: const Text('Open source licenses'),
+              title: const AppText('Open source licenses'),
               leading: const Icon(Icons.info_outline),
               onTap: () => showLicensePage(
                 context: context,

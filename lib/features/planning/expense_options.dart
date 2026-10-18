@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import '../../data.dart';
 import 'planning_domain.dart';
@@ -41,14 +42,14 @@ class ExpenseOptions extends StatelessWidget {
           SwitchListTile(
             value: refund,
             onChanged: (v) => change(refund: v),
-            title: const Text('Refund'),
+            title: const AppText('Refund'),
             subtitle: const Text(
               'Enter a positive amount; a refund reduces spending.',
             ),
           ),
           DropdownButtonFormField<String>(
             initialValue: category,
-            decoration: const InputDecoration(labelText: 'Category'),
+            decoration: InputDecoration(labelText: tr(context, 'Category')),
             items: expenseCategories
                 .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                 .toList(),
@@ -57,7 +58,9 @@ class ExpenseOptions extends StatelessWidget {
           if (!personal && home.members.length == 2) ...[
             DropdownButtonFormField<String>(
               initialValue: splitMode,
-              decoration: const InputDecoration(labelText: 'Shared split'),
+              decoration: InputDecoration(
+                labelText: tr(context, 'Shared split'),
+              ),
               items: const [
                 DropdownMenuItem(value: 'equal', child: Text('Equal 50/50')),
                 DropdownMenuItem(

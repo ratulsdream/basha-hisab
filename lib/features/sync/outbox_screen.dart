@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -37,7 +38,7 @@ class _OutboxScreenState extends State<OutboxScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: const AppText('Cancel'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
@@ -166,7 +167,7 @@ class _OutboxScreenState extends State<OutboxScreen> {
                                 onPressed: busy
                                     ? null
                                     : () => _retry(store, draft),
-                                child: const Text('Retry'),
+                                child: const AppText('Retry'),
                               ),
                               if (draft.reason.startsWith('Possible duplicate'))
                                 TextButton(

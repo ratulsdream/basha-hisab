@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -120,7 +121,7 @@ class _ExportScreenState extends State<ExportScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Export this month')),
+    appBar: AppBar(title: const AppText('Export this month')),
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -131,7 +132,7 @@ class _ExportScreenState extends State<ExportScreen> {
           'Includes expenses, item rows, transfers, references and settlement. Cached data is marked. Images stay on this phone.',
         ),
         SwitchListTile(
-          title: const Text('Include my private expenses'),
+          title: const AppText('Include my private expenses'),
           subtitle: const Text(
             'Private rows become visible to anyone you share this file with.',
           ),
@@ -141,11 +142,11 @@ class _ExportScreenState extends State<ExportScreen> {
         if (busy) const LinearProgressIndicator(),
         FilledButton(
           onPressed: busy ? null : () => export(true),
-          child: const Text('Share PDF'),
+          child: const AppText('Share PDF'),
         ),
         OutlinedButton(
           onPressed: busy ? null : () => export(false),
-          child: const Text('Share Excel (.xlsx)'),
+          child: const AppText('Share Excel (.xlsx)'),
         ),
       ],
     ),

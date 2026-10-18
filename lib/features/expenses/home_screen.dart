@@ -1,6 +1,11 @@
-import 'dart:async';
+import '../../l10n/app_text.dart';
+import '../shell/dashboard_tab.dart';
+import '../shell/preferences_screen.dart';
+import '../groups/profile_screen.dart';
+import '../sync/outbox_screen.dart';
+import '../notifications/notification_screen.dart';
+import '../exports/export_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,8 +23,6 @@ import 'expense_details.dart';
 import '../receipts/receipt_ocr.dart';
 import '../items/items_screen.dart';
 import '../items/items_repository.dart';
-import '../planning/planning_domain.dart';
-import '../planning/planning_repository.dart';
 import '../planning/planning_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -41,63 +44,12 @@ class _HomeScreenState extends State<HomeScreen> {
   late Stream<QuerySnapshot<Map<String, dynamic>>> _expenses = widget.repository
       .watchExpenses(widget.householdId, _month);
   bool _scanning = false;
-  List<Repayment> _payments = [];
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _paymentSubscription;
-  Object? _paymentError;
-  bool _paymentReady = false, _paymentCached = false;
-  @override
-  void initState() {
-    super.initState();
-    _listenPayments();
-  }
-
-  void _listenPayments() {
-    _paymentSubscription?.cancel();
-    if (!widget.repository.enableItemIntelligence) return;
-    _paymentReady = false;
-    _paymentError = null;
-    _payments = [];
-    _paymentSubscription =
-        PlanningRepository(
-              widget.repository.db,
-              widget.repository.uid,
-              widget.householdId,
-            )
-            .collection('payments')
-            .where('month', isEqualTo: monthKey(_month))
-            .snapshots(includeMetadataChanges: true)
-            .listen(
-              (snapshot) {
-                if (mounted) {
-                  setState(() {
-                    _payments = snapshot.docs
-                        .map((d) => paymentFromMap(d.id, d.data()))
-                        .toList();
-                    _paymentReady = true;
-                    _paymentCached =
-                        snapshot.metadata.isFromCache ||
-                        snapshot.metadata.hasPendingWrites;
-                  });
-                }
-              },
-              onError: (Object e) {
-                if (mounted) setState(() => _paymentError = e);
-              },
-            );
-  }
-
-  @override
-  void dispose() {
-    _paymentSubscription?.cancel();
-    super.dispose();
-  }
-
+  int _tab = 0, _itemTab = 0;
   void _changeMonth(int delta) {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta);
       _expenses = widget.repository.watchExpenses(widget.householdId, _month);
     });
-    _listenPayments();
   }
 
   Future<void> _add(Household household, {ImageSource? source}) async {
@@ -137,60 +89,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _chooseAdd(Household household) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Enter manually'),
-              onTap: () => Navigator.pop(context, 'manual'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Scan with camera'),
-              onTap: () => Navigator.pop(context, 'camera'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose receipt from gallery'),
-              onTap: () => Navigator.pop(context, 'gallery'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice != null && mounted) {
-      await _add(
-        household,
-        source: choice == 'manual'
-            ? null
-            : choice == 'camera'
-            ? ImageSource.camera
-            : ImageSource.gallery,
-      );
-    }
-  }
-
   Future<void> _leave(Household household) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Leave this group?'),
+        title: const AppText('Leave this group?'),
         content: const Text(
           'You will lose access to this home. All expenses remain for its members, and your personal account stays active. Save any unsettled balance first. A valid invite is needed to rejoin.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Leave group'),
+            child: const AppText('Leave group'),
           ),
         ],
       ),
@@ -210,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Invite your roommate'),
+        title: const AppText('Invite your roommate'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: const AppText('Close'),
           ),
           TextButton(
             onPressed: () {
@@ -240,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
-            child: const Text('Share code'),
+            child: const AppText('Share code'),
           ),
           FilledButton(
             onPressed: () async {
@@ -250,371 +164,403 @@ class _HomeScreenState extends State<HomeScreen> {
               if (context.mounted && mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(content: Text('Invitation code copied')),
+                  const SnackBar(content: AppText('Invitation code copied')),
                 );
               }
             },
-            child: const Text('Copy code'),
+            child: const AppText('Copy code'),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(
-    BuildContext context,
-  ) => StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-    stream: _house,
-    builder: (context, houseSnapshot) {
-      final household = houseSnapshot.hasData && houseSnapshot.data!.exists
-          ? Household(houseSnapshot.data!.id, houseSnapshot.data!.data()!)
-          : null;
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(household?.title ?? 'BashaHisab'),
-          leading: IconButton(
-            tooltip: 'Switch group',
-            icon: const Icon(Icons.swap_horiz),
-            onPressed: _scanning ? null : () => Navigator.pop(context),
-          ),
-          actions: [
-            if (household != null)
-              IconButton(
-                tooltip: 'Planning & settlement',
-                icon: const Icon(Icons.account_balance_wallet_outlined),
-                onPressed: _scanning
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => PlanningScreen(
-                            repository: widget.repository,
-                            household: household,
-                          ),
-                        ),
-                      ),
+  void _items([int tab = 0]) => setState(() {
+    _itemTab = tab;
+    _tab = 1;
+  });
+  void _planning(Household home, [int tab = 0]) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PlanningScreen(
+        repository: widget.repository,
+        household: home,
+        initialTab: tab,
+      ),
+    ),
+  );
+  void _profile() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ProfileScreen(repository: widget.repository),
+    ),
+  );
+  void _pending() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => OutboxScreen(repository: widget.repository),
+    ),
+  );
+  Future<void> _scan(Household home) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: AppText(
+                'Choose receipt source',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-            if (household != null)
-              IconButton(
-                tooltip: 'Grocery & kitchen',
-                icon: const Icon(Icons.kitchen_outlined),
-                onPressed: _scanning
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ItemsScreen(
-                            repository: ItemsRepository(
-                              widget.repository.db,
-                              widget.repository.uid,
-                              household.id,
-                            ),
-                            household: household,
-                            enabled: widget.repository.enableItemIntelligence,
-                          ),
-                        ),
-                      ),
-              ),
-            if (household?.members.length == 1)
-              IconButton(
-                tooltip: 'Invite roommate',
-                onPressed: () => _invite(household!),
-                icon: const Icon(Icons.person_add_outlined),
-              ),
-            if (household != null)
-              IconButton(
-                tooltip: 'Leave group',
-                icon: const Icon(Icons.exit_to_app),
-                onPressed: _scanning ? null : () => _leave(household),
-              ),
-            IconButton(
-              tooltip: 'Sign out',
-              onPressed: _scanning
-                  ? null
-                  : () async {
-                      try {
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          Navigator.of(
-                            context,
-                          ).popUntil((route) => route.isFirst);
-                        }
-                      } catch (error) {
-                        if (context.mounted) showError(context, error);
-                      }
-                    },
-              icon: const Icon(Icons.logout),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const AppText('Scan with camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const AppText('Choose receipt from gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
           ],
         ),
-        floatingActionButton: household == null || _scanning
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: () => _chooseAdd(household),
-                icon: const Icon(Icons.add),
-                label: const Text('Add expense'),
-              ),
-        body: _scanning
-            ? const Busy(message: 'Reading receipt on your device…')
-            : houseSnapshot.hasError
-            ? RetryMessage(
-                error: houseSnapshot.error!,
-                retry: () => setState(
-                  () => _house = widget.repository.watchHousehold(
-                    widget.householdId,
+      ),
+    );
+    if (source != null && mounted) await _add(home, source: source);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _house,
+        builder: (context, s) {
+          final home = s.hasData && s.data!.exists
+              ? Household(s.data!.id, s.data!.data()!)
+              : null;
+          return PopScope(
+            canPop: !_scanning,
+            child: Scaffold(
+              appBar: AppBar(
+                automaticallyImplyLeading: false,
+                title: Tooltip(
+                  message: tr(context, 'Switch group'),
+                  child: TextButton.icon(
+                    onPressed: _scanning ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.home_outlined),
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            home?.title ?? 'BashaHisab',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(Icons.expand_more),
+                      ],
+                    ),
                   ),
                 ),
-              )
-            : household == null
-            ? const Busy()
-            : Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        tooltip: 'Previous month',
-                        onPressed: () => _changeMonth(-1),
-                        icon: const Icon(Icons.chevron_left),
-                      ),
-                      Text(
-                        DateFormat.yMMMM().format(_month),
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        tooltip: 'Next month',
-                        onPressed: () => _changeMonth(1),
-                        icon: const Icon(Icons.chevron_right),
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: _expenses,
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return RetryMessage(
-                            error: snapshot.error!,
-                            retry: () => setState(
-                              () => _expenses = widget.repository.watchExpenses(
-                                widget.householdId,
-                                _month,
-                              ),
-                            ),
-                          );
-                        }
-                        if (!snapshot.hasData) {
-                          return const Busy(message: 'Loading expenses…');
-                        }
-                        final expenses =
-                            snapshot.data!.docs
-                                .map((doc) => Expense(doc.id, doc.data()))
-                                .where((expense) => !expense.voided)
-                                .toList()
-                              ..sort((a, b) => b.date.compareTo(a.date));
-                        if (widget.repository.enableItemIntelligence &&
-                            _paymentError != null) {
-                          return RetryMessage(
-                            error: _paymentError!,
-                            retry: () => setState(_listenPayments),
-                          );
-                        }
-                        if (widget.repository.enableItemIntelligence &&
-                            !_paymentReady) {
-                          return const Busy(message: 'Loading settlement…');
-                        }
-                        final settlement =
-                            widget.repository.enableItemIntelligence
-                            ? financeSettlement(
-                                household.members,
-                                household.legacyMembers,
-                                expenses.map(
-                                  (e) => FinanceEntry(
-                                    id: e.id,
-                                    merchant: e.merchant,
-                                    payer: e.payer,
-                                    date: e.date,
-                                    amount: e.total,
-                                    category: e.category,
-                                    refund: e.refund,
-                                    voided: e.voided,
-                                    splits: e.splits,
-                                    members: e.splitBetween,
-                                  ),
-                                ),
-                                _payments,
-                              )
-                            : calculateGroupSettlement(
-                                household.members,
-                                household.legacyMembers,
-                                expenses.map(
-                                  (e) => (
-                                    payer: e.payer,
-                                    amount: e.total,
-                                    splitBetween: e.splitBetween,
-                                  ),
-                                ),
-                              );
-                        return ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                          children: [
-                            if (snapshot.data!.metadata.isFromCache ||
-                                snapshot.data!.metadata.hasPendingWrites ||
-                                _paymentCached)
-                              const Card(
-                                child: Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: Text(
-                                    'Showing local data. Changes sync when connected; totals may be incomplete while offline.',
-                                  ),
-                                ),
-                              ),
-                            if (household.members.length == 1)
-                              Card(
-                                child: ListTile(
-                                  title: const Text(
-                                    'Your roommate has not joined yet',
-                                  ),
-                                  subtitle: const Text(
-                                    'Invite them to see who owes whom.',
-                                  ),
-                                  trailing: const Icon(
-                                    Icons.person_add_outlined,
-                                  ),
-                                  onTap: () => _invite(household),
-                                ),
-                              ),
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Total household spending'),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      displayMoney(
-                                        household.currency,
-                                        settlement.total,
-                                      ),
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.headlineMedium,
-                                    ),
-                                    const Divider(height: 28),
-                                    for (final id in settlement.paid.keys)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 12,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              '${household.name(id)}${id == widget.repository.uid ? ' (you)' : ''}',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.titleMedium,
-                                            ),
-                                            Text(
-                                              'Paid ${displayMoney(household.currency, settlement.paid[id]!)}',
-                                            ),
-                                            Text(
-                                              'Equal share ${displayMoney(household.currency, settlement.shares[id]!)}',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (settlement.total.isOdd)
-                                      const Text(
-                                        'An odd cent goes to the first roommate by account ID, so shares always add up exactly.',
-                                        style: TextStyle(fontSize: 12),
-                                      ),
-                                    if (household.members.length == 2 ||
-                                        settlement.transfers.isNotEmpty)
-                                      Container(
-                                        width: double.infinity,
-                                        padding: const EdgeInsets.all(16),
-                                        margin: const EdgeInsets.only(top: 8),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primaryContainer,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          settlement.transfers.isEmpty
-                                              ? 'All square — no one owes anything.'
-                                              : settlement.transfers
-                                                    .map(
-                                                      (transfer) =>
-                                                          '${household.name(transfer.debtor)} owes ${household.name(transfer.creditor)} ${displayMoney(household.currency, transfer.amount)}',
-                                                    )
-                                                    .join('\n'),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleMedium,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Expense history',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: 8),
-                            if (expenses.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 28),
-                                child: Text(
-                                  'No expenses this month. Add your first shared expense.',
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            for (final expense in expenses)
-                              Card(
-                                child: ListTile(
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.receipt_long_outlined),
-                                  ),
-                                  title: Text(
-                                    '${expense.refund ? 'Refund · ' : ''}${expense.merchant}',
-                                  ),
-                                  subtitle: Text(
-                                    '${DateFormat.yMMMd().format(expense.date)} · Paid by ${household.name(expense.payer)}',
-                                  ),
-                                  trailing: Text(
-                                    displayMoney(
-                                      household.currency,
-                                      expense.refund
-                                          ? -expense.total
-                                          : expense.total,
-                                    ),
-                                  ),
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => ExpenseDetails(
-                                        expense: expense,
-                                        household: household,
-                                        repository: widget.repository,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
+                actions: [
+                  IconButton(
+                    tooltip: tr(context, 'Personal profile'),
+                    onPressed: _scanning ? null : _profile,
+                    icon: const Icon(Icons.account_circle_outlined),
                   ),
                 ],
               ),
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: _scanning
+                    ? null
+                    : (v) => setState(() => _tab = v),
+                destinations: [
+                  for (final entry in [
+                    (Icons.home_outlined, 'Home'),
+                    (Icons.inventory_2_outlined, 'Items'),
+                    (Icons.history, 'History'),
+                    (Icons.grid_view_outlined, 'More'),
+                  ])
+                    NavigationDestination(
+                      icon: Icon(entry.$1),
+                      label: tr(context, entry.$2),
+                    ),
+                ],
+              ),
+              body: SafeArea(
+                top: false,
+                child: _scanning
+                    ? const Busy(message: 'Reading receipt on your device…')
+                    : s.hasError
+                    ? RetryMessage(
+                        error: s.error!,
+                        retry: () => setState(
+                          () => _house = widget.repository.watchHousehold(
+                            widget.householdId,
+                          ),
+                        ),
+                      )
+                    : home == null
+                    ? const Busy(message: 'Loading your home…')
+                    : switch (_tab) {
+                        0 => DashboardTab(
+                          key: ValueKey(home.id),
+                          repository: widget.repository,
+                          home: home,
+                          scan: () => _scan(home),
+                          add: () => _add(home),
+                          shopping: () => _items(2),
+                          history: () => setState(() => _tab = 2),
+                          regular: () => _items(1),
+                          budget: () => _planning(home),
+                          invite: () => _invite(home),
+                          pending: _pending,
+                        ),
+                        1 => ItemsScreen(
+                          key: ValueKey('${home.id}:$_itemTab'),
+                          repository: ItemsRepository(
+                            widget.repository.db,
+                            widget.repository.uid,
+                            home.id,
+                          ),
+                          household: home,
+                          enabled: widget.repository.enableItemIntelligence,
+                          initialTab: _itemTab,
+                          onHistory: () => setState(() => _tab = 2),
+                        ),
+                        2 => _history(home),
+                        _ => _more(home),
+                      },
+              ),
+            ),
+          );
+        },
       );
-    },
+  Widget _history(Household home) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: tr(context, 'Previous month'),
+              onPressed: () => _changeMonth(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Text(
+                DateFormat.yMMMM(
+                  Localizations.localeOf(context).toLanguageTag(),
+                ).format(_month),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            IconButton(
+              tooltip: tr(context, 'Next month'),
+              onPressed: () => _changeMonth(1),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final entry in [
+              ('Search and filters', 3),
+              ('Category breakdown', 0),
+              ('Payment history', 1),
+              ('Personal & shared expenses', 4),
+              ('Export PDF / Excel', -1),
+            ])
+              ActionChip(
+                label: AppText(entry.$1),
+                avatar: Icon(
+                  entry.$2 == -1 ? Icons.ios_share : Icons.tune,
+                  size: 18,
+                ),
+                onPressed: () =>
+                    entry.$2 == -1 && widget.repository.enableItemIntelligence
+                    ? Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ExportScreen(
+                            repository: widget.repository,
+                            home: home,
+                            month: _month,
+                          ),
+                        ),
+                      )
+                    : _planning(home, entry.$2 < 0 ? 0 : entry.$2),
+              ),
+          ],
+        ),
+      ),
+      Expanded(
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _expenses,
+          builder: (context, s) {
+            if (s.hasError) {
+              return RetryMessage(
+                error: s.error!,
+                retry: () => setState(
+                  () => _expenses = widget.repository.watchExpenses(
+                    home.id,
+                    _month,
+                  ),
+                ),
+              );
+            }
+            if (!s.hasData) return const Busy(message: 'Loading expenses…');
+            final rows =
+                s.data!.docs
+                    .map((d) => Expense(d.id, d.data()))
+                    .where((e) => !e.voided)
+                    .toList()
+                  ..sort((a, b) => b.date.compareTo(a.date));
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (s.data!.metadata.isFromCache ||
+                    s.data!.metadata.hasPendingWrites)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: AppText(
+                        'Local data — totals may be incomplete until connected.',
+                      ),
+                    ),
+                  ),
+                if (rows.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: AppText('No expenses this month.'),
+                  ),
+                for (final e in rows)
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: Text(e.merchant),
+                      subtitle: Text(
+                        '${DateFormat.yMMMd().format(e.date)} · ${home.name(e.payer)}${e.refund ? ' · ${tr(context, 'Refund')}' : ''}',
+                      ),
+                      trailing: Text(
+                        displayMoney(
+                          home.currency,
+                          e.refund ? -e.total : e.total,
+                        ),
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ExpenseDetails(
+                            expense: e,
+                            household: home,
+                            repository: widget.repository,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    ],
+  );
+  Widget _more(Household home) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      for (final entry in <({IconData icon, String title, VoidCallback tap})>[
+        (icon: Icons.person_outline, title: 'Personal profile', tap: _profile),
+        (
+          icon: Icons.swap_horiz,
+          title: 'Manage groups',
+          tap: () => Navigator.pop(context),
+        ),
+        (
+          icon: Icons.person_add_outlined,
+          title: 'Invitations',
+          tap: () => _invite(home),
+        ),
+        (
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'Budget settings',
+          tap: () => _planning(home),
+        ),
+        (
+          icon: Icons.repeat,
+          title: 'Recurring bills',
+          tap: () => _planning(home, 2),
+        ),
+        (
+          icon: Icons.notifications_outlined,
+          title: 'Notifications',
+          tap: () => widget.repository.enableItemIntelligence
+              ? Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        NotificationScreen(repository: widget.repository),
+                  ),
+                )
+              : _planning(home),
+        ),
+        (
+          icon: Icons.translate,
+          title: 'Language & appearance',
+          tap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const PreferencesScreen()),
+          ),
+        ),
+        (
+          icon: Icons.settings_outlined,
+          title: 'App settings',
+          tap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const PreferencesScreen()),
+          ),
+        ),
+        if (widget.repository.enableItemIntelligence)
+          (
+            icon: Icons.cloud_upload_outlined,
+            title: 'Pending drafts',
+            tap: _pending,
+          ),
+        (
+          icon: Icons.exit_to_app,
+          title: 'Leave group',
+          tap: () => _leave(home),
+        ),
+        (
+          icon: Icons.logout,
+          title: 'Sign out',
+          tap: () async {
+            try {
+              await widget.repository.auth.signOut();
+              if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+            } catch (e) {
+              if (mounted) showError(context, e);
+            }
+          },
+        ),
+      ])
+        Card(
+          child: ListTile(
+            leading: Icon(entry.icon),
+            title: AppText(entry.title),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: entry.tap,
+          ),
+        ),
+      const Padding(
+        padding: EdgeInsets.all(16),
+        child: AppText(
+          'Receipt photos stay on your phone. Only reviewed expense data is shared with your home.',
+        ),
+      ),
+    ],
   );
 }

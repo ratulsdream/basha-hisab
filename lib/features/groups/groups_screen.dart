@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import '../notifications/notification_service.dart';
 import '../notifications/notification_screen.dart';
 import '../sync/outbox_service.dart';
@@ -94,7 +95,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('My Groups / Homes'),
+      title: const AppText('My Groups / Homes'),
       actions: [
         if (repository.enableItemIntelligence)
           IconButton(
@@ -174,12 +175,12 @@ class _GroupsScreenState extends State<GroupsScreen> {
               FilledButton.icon(
                 onPressed: () => _createOrJoin(false),
                 icon: const Icon(Icons.add_home_outlined),
-                label: const Text('Create group'),
+                label: const AppText('Create group'),
               ),
               OutlinedButton.icon(
                 onPressed: () => _createOrJoin(true),
                 icon: const Icon(Icons.group_add_outlined),
-                label: const Text('Join with invite code'),
+                label: const AppText('Join with invite code'),
               ),
             ],
             const SizedBox(height: 20),
@@ -299,7 +300,7 @@ class _GroupSetupState extends State<GroupSetup> {
             if (!widget.join) ...[
               DropdownButtonFormField<String>(
                 initialValue: _currency,
-                decoration: const InputDecoration(labelText: 'Currency'),
+                decoration: InputDecoration(labelText: tr(context, 'Currency')),
                 items: ['EUR', 'BDT', 'USD', 'GBP', 'INR']
                     .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                     .toList(),
@@ -313,13 +314,13 @@ class _GroupSetupState extends State<GroupSetup> {
               ),
             ],
             if (_error != null)
-              Text(
+              AppText(
                 _error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             FilledButton(
               onPressed: _busy ? null : _submit,
-              child: Text(
+              child: AppText(
                 _busy
                     ? 'Saving…'
                     : widget.join

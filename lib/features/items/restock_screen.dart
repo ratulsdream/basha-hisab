@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/common.dart';
 import 'items_domain.dart';
@@ -140,7 +141,7 @@ class _RestockScreenState extends State<RestockScreen> {
                             decimal: true,
                           ),
                           decoration: InputDecoration(
-                            labelText: 'Quantity',
+                            labelText: tr(context, 'Quantity'),
                             helperText: row.purchase.quantityVerified
                                 ? null
                                 : 'Not known from receipt — enter the amount added to stock',

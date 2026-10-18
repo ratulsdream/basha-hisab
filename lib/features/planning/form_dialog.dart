@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import '../../domain.dart';
 
@@ -72,7 +73,7 @@ class _FinanceFormState extends State<_FinanceForm> {
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
+        child: const AppText('Cancel'),
       ),
       FilledButton(
         onPressed: () {

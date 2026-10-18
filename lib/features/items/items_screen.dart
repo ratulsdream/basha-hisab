@@ -1,3 +1,5 @@
+import 'package:basha_hisab/l10n/app_text.dart';
+import '../shell/feature_availability.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../data.dart';
@@ -12,10 +14,14 @@ class ItemsScreen extends StatefulWidget {
     required this.repository,
     required this.household,
     required this.enabled,
+    this.initialTab = 0,
+    this.onHistory,
   });
   final ItemsRepository repository;
   final Household household;
   final bool enabled;
+  final int initialTab;
+  final VoidCallback? onHistory;
   @override
   State<ItemsScreen> createState() => _ItemsScreenState();
 }
@@ -69,7 +75,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -124,7 +130,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
                 TextField(
                   controller: name,
                   maxLength: 100,
-                  decoration: const InputDecoration(labelText: 'Item name'),
+                  decoration: InputDecoration(
+                    labelText: tr(context, 'Item name'),
+                  ),
                 ),
                 DropdownButtonFormField<String>(
                   initialValue: category,
@@ -138,14 +146,14 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   controller: alias,
                   maxLength: 100,
                   decoration: InputDecoration(
-                    labelText: 'Optional Greek/English alias',
+                    labelText: tr(context, 'Optional Greek/English alias'),
                     helperText: 'Active: $existingAliases',
                   ),
                 ),
                 DropdownButtonFormField<String>(
                   initialValue: target,
-                  decoration: const InputDecoration(
-                    labelText: 'Reviewed merge into',
+                  decoration: InputDecoration(
+                    labelText: tr(context, 'Reviewed merge into'),
                   ),
                   items: [
                     const DropdownMenuItem(
@@ -183,11 +191,11 @@ class _ItemsScreenState extends State<ItemsScreen> {
               ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const AppText('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, 'save'),
-              child: const Text('Save'),
+              child: const AppText('Save'),
             ),
           ],
         ),
@@ -241,8 +249,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Quantity',
+                        decoration: InputDecoration(
+                          labelText: tr(context, 'Quantity'),
                         ),
                       ),
                       DropdownButtonFormField<String>(
@@ -259,7 +267,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+                      child: const AppText('Cancel'),
                     ),
                     FilledButton(
                       onPressed: () => Navigator.pop(context, true),
@@ -323,18 +331,18 @@ class _ItemsScreenState extends State<ItemsScreen> {
               TextField(
                 controller: notes,
                 maxLength: 500,
-                decoration: const InputDecoration(labelText: 'Notes'),
+                decoration: InputDecoration(labelText: tr(context, 'Notes')),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const AppText('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save'),
+              child: const AppText('Save'),
             ),
           ],
         ),
@@ -372,7 +380,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -411,7 +419,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
             children: [
               DropdownButtonFormField<String>(
                 initialValue: classification,
-                decoration: const InputDecoration(labelText: 'Library item'),
+                decoration: InputDecoration(labelText: 'Library item'),
                 items: catalog.values
                     .map(
                       (c) => DropdownMenuItem(value: c.id, child: Text(c.name)),
@@ -421,7 +429,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
               ),
               TextField(
                 controller: quantity,
-                decoration: const InputDecoration(labelText: 'Quantity'),
+                decoration: InputDecoration(labelText: tr(context, 'Quantity')),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -446,7 +454,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const AppText('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
@@ -478,29 +486,25 @@ class _ItemsScreenState extends State<ItemsScreen> {
   @override
   Widget build(BuildContext context) {
     if (!widget.enabled) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Grocery tools')),
-        body: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Phase 1 is awaiting verification of the deployed Firestore security rules. Your existing expenses remain available. New grocery data will not be written by this build.',
-          ),
-        ),
+      return FeatureAvailability(
+        features: itemFeatures,
+        onHistory: widget.onHistory,
       );
     }
     return DefaultTabController(
       length: 5,
+      initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Grocery & kitchen'),
+          title: const AppText('Grocery & kitchen'),
           bottom: const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(text: 'Library'),
-              Tab(text: 'Regular items'),
-              Tab(text: 'Shopping'),
-              Tab(text: 'Kitchen'),
-              Tab(text: 'Prices'),
+              Tab(child: AppText('Library')),
+              Tab(child: AppText('Regular items')),
+              Tab(child: AppText('Shopping')),
+              Tab(child: AppText('Kitchen')),
+              Tab(child: AppText('Prices')),
             ],
           ),
           actions: [

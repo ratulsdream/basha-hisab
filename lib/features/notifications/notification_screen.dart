@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart'
     hide NotificationSettings;
@@ -118,7 +119,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   );
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Notifications')),
+    appBar: AppBar(title: const AppText('Notifications')),
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -127,7 +128,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         ),
         if (busy) const LinearProgressIndicator(),
         SwitchListTile(
-          title: const Text('Enable notifications'),
+          title: const AppText('Enable notifications'),
           value: settings.enabled,
           onChanged: busy ? null : (v) => update(enabled: v),
         ),
@@ -141,7 +142,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         DropdownButtonFormField<String>(
           initialValue: settings.zone,
-          decoration: const InputDecoration(labelText: 'Reminder time zone'),
+          decoration: InputDecoration(
+            labelText: tr(context, 'Reminder time zone'),
+          ),
           items: [
             'Europe/Nicosia',
             'Europe/Athens',
@@ -169,7 +172,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         FilledButton(
           onPressed: busy ? null : save,
-          child: const Text('Save preferences'),
+          child: const AppText('Save preferences'),
         ),
       ],
     ),

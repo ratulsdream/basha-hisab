@@ -1,3 +1,4 @@
+import 'package:basha_hisab/l10n/app_text.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -127,7 +128,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: 12),
-                    Text(
+                    AppText(
                       'BashaHisab',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineLarge,
@@ -137,7 +138,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
-                    Text(
+                    AppText(
                       _register ? 'Create your account' : 'Welcome back',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
@@ -147,7 +148,9 @@ class _AuthScreenState extends State<AuthScreen> {
                       enabled: !_busy,
                       autofillHints: const [AutofillHints.email],
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'Email'),
+                      decoration: InputDecoration(
+                        labelText: tr(context, 'Email'),
+                      ),
                       validator: (value) =>
                           value != null &&
                               RegExp(r'^\S+@\S+\.\S+$').hasMatch(value.trim())
@@ -165,7 +168,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             : AutofillHints.password,
                       ],
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: tr(context, 'Password'),
                         suffixIcon: IconButton(
                           onPressed: () => setState(() => _obscure = !_obscure),
                           icon: Icon(
@@ -180,7 +183,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
+                        child: AppText(
                           _error!,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
@@ -190,7 +193,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: _busy ? null : _submit,
-                      child: Text(
+                      child: AppText(
                         _busy
                             ? 'Please wait…'
                             : _register
@@ -214,7 +217,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     if (!_register)
                       TextButton(
                         onPressed: _busy ? null : _reset,
-                        child: const Text('Forgot password?'),
+                        child: const AppText('Forgot password?'),
                       ),
                   ],
                 ),
