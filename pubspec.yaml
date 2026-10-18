@@ -30,6 +30,12 @@ dependencies:
   timezone: ^0.10.0
   firebase_messaging: ^16.3.0
 dev_dependencies:
+  # Real browser SDK registration for isolated emulator integration only.
+  firebase_core_web: 3.12.0
+  firebase_auth_web: 6.3.0
+  cloud_firestore_web: 5.7.3
+  flutter_web_plugins:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

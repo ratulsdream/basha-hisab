@@ -5,6 +5,10 @@ import 'dart:async';
 import 'dart:js_interop';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:js_interop_unsafe';
+import 'package:firebase_core_web/firebase_core_web.dart';
+import 'package:firebase_auth_web/firebase_auth_web.dart';
+import 'package:cloud_firestore_web/cloud_firestore_web.dart';
+import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:basha_hisab/data.dart';
 import 'package:basha_hisab/domain.dart';
 import 'package:basha_hisab/features/items/feature_gate.dart';
@@ -45,6 +49,11 @@ Future<void> loadTestSdk() async {
 /// Real FlutterFire SDKs + actual local emulators; never fake Firestore or production config.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Browser unit-test runners do not run an app's generated plugin registrant.
+  // These are the genuine FlutterFire implementations, not test mocks.
+  FirebaseCoreWeb.registerWith(webPluginRegistrar);
+  FirebaseAuthWeb.registerWith(webPluginRegistrar);
+  FirebaseFirestoreWeb.registerWith(webPluginRegistrar);
   browserEvent(
     'unhandledrejection'.toJS,
     ((JSObject event) {
