@@ -14,3 +14,10 @@ Upstream license texts:
 - https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE
 - https://github.com/DanBloomberg/leptonica/blob/master/leptonica-license.txt
 - https://github.com/adaptech-cz/Tesseract4Android/blob/master/LICENSE
+
+
+The 3.1 interface bundles Noto Sans Bengali regular/bold (SIL Open Font License;
+full notices in assets/fonts/NOTO-LICENSE.txt). DejaVu Sans supports Greek PDF
+exports and UI fallback (assets/fonts/LICENSE.txt). Both are registered in the
+app's open-source license view. Firebase browser SDK 12.19.0 and esbuild are
+locked test-only dependencies; their temporary SDK bundle is not an app asset.

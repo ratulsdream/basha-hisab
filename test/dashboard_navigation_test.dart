@@ -268,4 +268,26 @@ void main() {
       expect(find.text('Bob owes Alice EUR 3.00'), findsOneWidget);
     },
   );
+  testWidgets('locked planning returns to real expense history from More', (
+    tester,
+  ) async {
+    await open(tester);
+    await tester.tap(find.text('More').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Budget settings'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('View expense history'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View expense history'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      2,
+    );
+    expect(find.text('ΑΛΦΑΜΕΓΑ'), findsOneWidget);
+  });
 }

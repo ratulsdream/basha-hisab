@@ -30,3 +30,9 @@ represented as production-verified while those checks remain unresolved.
 Repository security audit extended with per-collection cross-group and leave
 revocation matrices; published-production rules remain unavailable. Normal
 build flags remain closed. See DASHBOARD_RELEASE.md and SECURITY_REVIEW_3_1.md.
+
+3.1 final UI validation: 87 Flutter tests pass in both default and enabled
+configurations, with 33 security emulator tests and a successful genuine
+FlutterFire/Auth/Firestore emulator repository scenario in Actions. Production
+rule export/comparison and explicitly approved deployment/activation remain
+blocked. No production rules or data were changed.

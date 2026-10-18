@@ -39,7 +39,7 @@ rule export, review, approval and activation sequence. Never enable production
 v3 modules solely to remove a locked-state message.
 
 
-Validation: 85 Flutter tests passed in both default and V3_ENABLED=true builds;
+Validation: 87 Flutter tests passed in both default and V3_ENABLED=true builds;
 33 Firestore emulator authorization tests, 6 audit/export helper tests and 2
 notification policy tests passed. Flutter analyze and formatting/actionlint are
 clean. The offline native Tesseract smoke test recognized Greek and English
@@ -51,3 +51,15 @@ Navigation follow-up preserves the chosen History month in reports, removes a
 misleading nested back button from Items, and refreshes reminder scheduling after
 notification settings change from More. Group switch tests confirm separate
 home histories and per-account remembered group IDs without modifying expenses.
+
+
+The locked dashboard interprets any existing refund/custom-split metadata from
+already-readable shared expenses. It labels settlement as a shared-expense
+balance until repayment access is verified, rather than implying those payment
+records were read. The unavailable-planning History action opens real History.
+
+The real FlutterFire/local-emulator integration passed in GitHub Actions:
+https://github.com/ratulsdream/basha-hisab/actions/runs/39118119609
+It exercised actual repositories and SDKs with V3_ENABLED=true, beyond fake
+Firestore widget tests. This validates the candidate against local rules, not
+the currently deployed production rules or physical-device behavior.

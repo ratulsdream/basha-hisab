@@ -19,11 +19,13 @@ class PlanningScreen extends StatefulWidget {
     required this.household,
     this.initialTab = 0,
     this.initialMonth,
+    this.onHistory,
   });
   final HouseholdRepository repository;
   final Household household;
   final int initialTab;
   final DateTime? initialMonth;
+  final VoidCallback? onHistory;
   @override
   State<PlanningScreen> createState() => _PlanningScreenState();
 }
@@ -423,6 +425,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
               repository: widget.repository,
               household: choice,
               initialMonth: month,
+              onHistory: widget.onHistory,
             ),
           ),
         );
@@ -437,7 +440,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
         appBar: AppBar(title: const AppText('Planning & settlement')),
         body: FeatureAvailability(
           features: planningFeatures,
-          onHistory: () => Navigator.pop(context),
+          onHistory: widget.onHistory ?? () => Navigator.pop(context),
         ),
       );
     }

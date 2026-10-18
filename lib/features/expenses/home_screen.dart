@@ -189,6 +189,10 @@ class _HomeScreenState extends State<HomeScreen> {
             household: home,
             initialTab: tab,
             initialMonth: month,
+            onHistory: () {
+              Navigator.of(context).pop();
+              if (mounted) setState(() => _tab = 2);
+            },
           ),
         ),
       );

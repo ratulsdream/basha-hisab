@@ -2,7 +2,7 @@
 
 ## Current outcome
 
-Repository audit and isolated tests can complete. Production verification and
+Repository audit and isolated tests are complete. Production verification and
 activation CANNOT complete without the actual published rules. No Firebase CLI
 account/tokens, gcloud executable or Google application-default credentials are
 available in this environment. Native google-services.json and iOS plist are
@@ -170,3 +170,18 @@ SDK, not a fake backend or a security bypass. The bundle is test-only and is not
 an Android/iOS app asset. npm ci verifies its lockfile integrity. The helper
 starts/stops its own temporary server and Auth/Firestore emulators, all on local
 ports, and never loads production native configuration.
+
+
+Real SDK integration result: PASSED in Actions run 39118119609 (1 full repository
+scenario; account recovery/profile, join, expense retry/indexing, stock events,
+budget/repayment, private and cross-group denial, multi-group membership, leave
+and original expense retention). The browser runner explicitly registers genuine
+FlutterFire web implementations. Full standard Firestore and optional pipeline
+exports are supplied from the same locked SDK version; no fake backend or rule
+bypass is used. Native Android/iOS device acceptance remains separate.
+
+The legacy V3_ITEMS_ENABLED compatibility flag currently maps to the master v3
+gate, including planning. It is not a limited permission grant. Verify every
+path in the inventory before enabling either flag. Partial module approval
+requires separately scoped capabilities before activation; normal builds keep
+both flags false.
