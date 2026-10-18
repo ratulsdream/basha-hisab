@@ -356,3 +356,43 @@ test('notification preferences and device tokens are owner-only and schema const
   await assertFails(setDoc(doc(alice,`users/alice/devices/${device}`),{...token,groupId:'foreign'}));
   await assertFails(setDoc(doc(alice,'notificationDeliveries/forged'),{uid:'alice'}));
 });
+
+test('all v3 group collections reject cross-group reads, queries and writes', async () => {
+  await createHome('alice');
+  await createHome('bob','other','fedcba9876543210fedcba9876543210');
+  const paths=['catalog','catalogChanges','itemAliases','aliasChanges','purchases','purchaseCorrections','purchaseChanges','shopping','shoppingEvents','stock','stockEvents','receiptSignatures','budgets','payments','recurring','expenseChanges','expenses'];
+  await env.withSecurityRulesDisabled(async context=> {
+    for(const path of paths) await setDoc(doc(context.firestore(),`households/home/${path}/existing`),{auditFixture:true});
+    await setDoc(doc(context.firestore(),'households/home/expenses/existing/items/0'),{name:'ΓΑΛΑ',amount:250,index:0});
+  });
+  const alice=db('alice'), bob=db('bob');
+  for(const path of paths) {
+    await assertSucceeds(getDoc(doc(alice,`households/home/${path}/existing`)));
+    await assertFails(getDoc(doc(bob,`households/home/${path}/existing`)));
+    await assertFails(getDocs(collection(bob,`households/home/${path}`)));
+    await assertFails(setDoc(doc(bob,`households/home/${path}/forged`),{createdBy:'bob'}));
+  }
+  await assertFails(getDoc(doc(bob,'households/home/expenses/existing/items/0')));
+  for(const unknown of ['receipts','invoices','settlements']) {
+    await assertFails(getDoc(doc(alice,`households/home/${unknown}/unknown`)));
+    await assertFails(setDoc(doc(alice,`households/home/${unknown}/forged`),{createdBy:'alice'}));
+  }
+});
+
+test('membership revocation removes access to every v3 collection without deleting historical data',async()=> {
+  await createHome('alice'); await join('bob');
+  const paths=['catalog','purchases','shopping','stock','receiptSignatures','budgets','payments','recurring','expenses'];
+  await env.withSecurityRulesDisabled(async context=> {
+    for(const path of paths) await setDoc(doc(context.firestore(),`households/home/${path}/history`),{preserved:true});
+  });
+  const bob=db('bob'), batch=writeBatch(bob);
+  batch.update(house(bob),{memberIds:arrayRemove('bob'),legacyMemberIds:['alice','bob']});
+  batch.delete(doc(bob,'users/bob/memberships/home'));batch.delete(doc(bob,'households/home/members/bob'));
+  await assertSucceeds(batch.commit());
+  const alice=db('alice');
+  for(const path of paths) {
+    await assertFails(getDoc(doc(bob,`households/home/${path}/history`)));
+    const original=await assertSucceeds(getDoc(doc(alice,`households/home/${path}/history`)));
+    assert.equal(original.data().preserved,true);
+  }
+});

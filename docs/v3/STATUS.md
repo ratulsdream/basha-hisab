@@ -24,3 +24,9 @@ configuration/testing. Standard APKs keep v3 modules closed pending that audit.
 Production security audit, production rollout, APNs/Apple setup and physical
 device acceptance are separate from repository implementation. No APK should be
 represented as production-verified while those checks remain unresolved.
+
+
+3.1 redesign: four-tab dashboard/theme/language stage committed as 8ac632d.
+Repository security audit extended with per-collection cross-group and leave
+revocation matrices; published-production rules remain unavailable. Normal
+build flags remain closed. See DASHBOARD_RELEASE.md and SECURITY_REVIEW_3_1.md.

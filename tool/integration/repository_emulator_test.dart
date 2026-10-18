@@ -1,0 +1,221 @@
+@TestOn('browser')
+library;
+
+import 'package:basha_hisab/data.dart';
+import 'package:basha_hisab/domain.dart';
+import 'package:basha_hisab/features/items/feature_gate.dart';
+import 'package:basha_hisab/features/items/items_repository.dart';
+import 'package:basha_hisab/features/planning/planning_repository.dart';
+import 'package:basha_hisab/features/planning/planning_domain.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// Real FlutterFire SDKs + actual local emulators; never fake Firestore or production config.
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'enabled real repositories preserve expenses, share with members and isolate groups',
+    () async {
+      expect(
+        v3ItemsEnabled,
+        true,
+        reason: 'Run with --dart-define=V3_ENABLED=true',
+      );
+      final apps = <FirebaseApp>[];
+      Future<HouseholdRepository> account(String label) async {
+        final app = await Firebase.initializeApp(
+          name: '$label-${DateTime.now().microsecondsSinceEpoch}',
+          options: const FirebaseOptions(
+            apiKey: 'demo-key',
+            appId: '1:1234567890:web:emulator',
+            messagingSenderId: '1234567890',
+            projectId: 'demo-bashahisab',
+          ),
+        );
+        apps.add(app);
+        final auth = FirebaseAuth.instanceFor(app: app);
+        await auth.useAuthEmulator('127.0.0.1', 9099);
+        final db = FirebaseFirestore.instanceFor(app: app);
+        db.settings = const Settings(persistenceEnabled: false);
+        db.useFirestoreEmulator('127.0.0.1', 8080, automaticHostMapping: false);
+        await auth.createUserWithEmailAndPassword(
+          email: '$label-${DateTime.now().microsecondsSinceEpoch}@example.test',
+          password: 'Only-for-emulators-2026',
+        );
+        final repo = HouseholdRepository(
+          auth: auth,
+          firestore: db,
+          enableItemIntelligence: v3ItemsEnabled,
+        );
+        await repo.ensureProfile();
+        return repo;
+      }
+
+      final a = await account('alice'),
+          b = await account('bob'),
+          outsider = await account('outsider');
+      final id = await a.createHousehold('Emulator home', 'EUR');
+      var home = Household(
+        id,
+        (await a.db.collection('households').doc(id).get()).data()!,
+      );
+      await b.joinHousehold(home.inviteCode);
+      home = Household(
+        id,
+        (await a.db.collection('households').doc(id).get()).data()!,
+      );
+      final date = DateTime(2026, 10, 18);
+      Future<void> save() => a.savePlannedExpense(
+        household: home,
+        id: 'stable-receipt',
+        merchant: 'ΑΛΦΑΜΕΓΑ',
+        payer: a.uid,
+        date: date,
+        items: [
+          const ExpenseItem('ΓΑΛΑ', 1000, quantityMilli: 2000, unit: 'each'),
+        ],
+        total: 1000,
+        category: 'food',
+      );
+      await save();
+      await save();
+      final shared = b.db.collection('households').doc(id);
+      expect((await shared.collection('expenses').get()).docs.length, 1);
+      expect(
+        (await shared
+                .collection('expenses')
+                .doc('stable-receipt')
+                .collection('items')
+                .get())
+            .docs
+            .single
+            .data()['name'],
+        'ΓΑΛΑ',
+      );
+      final items = ItemsRepository(a.db, a.uid, id);
+      final purchaseDoc =
+          (await items.collection('purchases').get()).docs.single;
+      final purchase = purchaseFromMap(purchaseDoc.id, purchaseDoc.data());
+      await items.restock(purchase, quantityMilli: 2000, unit: 'each');
+      await items.restock(purchase, quantityMilli: 2000, unit: 'each');
+      await items.consume('receipt_${purchase.id}', 500, 'consume-once');
+      await items.consume('receipt_${purchase.id}', 500, 'consume-once');
+      expect(
+        (await items.collection('stock').doc('receipt_${purchase.id}').get())
+            .data()!['quantityMilli'],
+        1500,
+      );
+      final planning = PlanningRepository(a.db, a.uid, id);
+      await planning.setBudget('2026-10', 5000, {'food': 3000}, -1);
+      await planning.recordPayment(
+        id: 'settle-once',
+        from: b.uid,
+        to: a.uid,
+        amount: 500,
+        date: date,
+      );
+      await planning.recordPayment(
+        id: 'settle-once',
+        from: b.uid,
+        to: a.uid,
+        amount: 500,
+        date: date,
+      );
+      final expenses = (await shared.collection('expenses').get()).docs.map(
+        (d) => financeFromMap(d.id, d.data()),
+      );
+      final transfers = (await shared.collection('payments').get()).docs.map(
+        (d) => paymentFromMap(d.id, d.data()),
+      );
+      expect(
+        financeSettlement(
+          home.members,
+          home.legacyMembers,
+          expenses,
+          transfers,
+        ).transfers,
+        isEmpty,
+      );
+      await expectLater(
+        outsider.db
+            .collection('households')
+            .doc(id)
+            .collection('expenses')
+            .get(const GetOptions(source: Source.server)),
+        throwsA(
+          isA<FirebaseException>().having(
+            (e) => e.code,
+            'code',
+            'permission-denied',
+          ),
+        ),
+      );
+      await a.savePlannedExpense(
+        household: home,
+        id: 'private',
+        merchant: 'Private',
+        payer: a.uid,
+        date: date,
+        items: [],
+        total: 500,
+        personal: true,
+      );
+      await expectLater(
+        b.db
+            .collection('users')
+            .doc(a.uid)
+            .collection('personalExpenses')
+            .get(const GetOptions(source: Source.server)),
+        throwsA(
+          isA<FirebaseException>().having(
+            (e) => e.code,
+            'code',
+            'permission-denied',
+          ),
+        ),
+      );
+      final second = await a.createHousehold('Second emulator home', 'EUR');
+      expect((await a.watchMemberships().first).docs.length, 2);
+      expect(
+        (await a.db
+                .collection('households')
+                .doc(second)
+                .collection('expenses')
+                .get())
+            .docs,
+        isEmpty,
+      );
+      await b.leaveGroup(id);
+      await expectLater(
+        shared
+            .collection('expenses')
+            .get(const GetOptions(source: Source.server)),
+        throwsA(
+          isA<FirebaseException>().having(
+            (e) => e.code,
+            'code',
+            'permission-denied',
+          ),
+        ),
+      );
+      expect(
+        (await a.db
+                .collection('households')
+                .doc(id)
+                .collection('expenses')
+                .get())
+            .docs
+            .single
+            .id,
+        'stable-receipt',
+      );
+      for (final app in apps) {
+        await FirebaseAuth.instanceFor(app: app).signOut();
+        await app.delete();
+      }
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+}
