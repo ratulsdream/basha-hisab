@@ -73,12 +73,24 @@ class _GroupsScreenState extends State<GroupsScreen> {
     }
   }
 
+  Future<void> _refreshNotifications() async {
+    await _notifications?.stop();
+    if (mounted && repository.enableItemIntelligence) {
+      _notifications = HomeNotifications(repository);
+      await _notifications!.start();
+    }
+  }
+
   Future<void> _open(String id) async {
     await _selection?.select(id);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => HomeScreen(repository: repository, householdId: id),
+        builder: (_) => HomeScreen(
+          repository: repository,
+          householdId: id,
+          refreshNotifications: _refreshNotifications,
+        ),
       ),
     );
   }

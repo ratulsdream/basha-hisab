@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:basha_hisab/features/groups/groups_screen.dart';
 import 'package:basha_hisab/data.dart';
 import 'package:basha_hisab/features/expenses/home_screen.dart';
@@ -215,6 +216,26 @@ void main() {
       expect(
         (await db.doc('households/home/expenses/receipt').get()).exists,
         true,
+      );
+    },
+  );
+  testWidgets(
+    'history reports retain the selected month and embedded items has no misleading back arrow',
+    (tester) async {
+      await open(tester, enabled: true);
+      await tester.tap(find.text('Items').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(BackButton), findsNothing);
+      await tester.tap(find.text('History').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Category breakdown'));
+      await tester.pumpAndSettle();
+      final now = DateTime.now();
+      expect(
+        find.text(DateFormat.yMMMM().format(DateTime(now.year, now.month - 1))),
+        findsOneWidget,
       );
     },
   );

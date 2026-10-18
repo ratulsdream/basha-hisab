@@ -18,10 +18,12 @@ class PlanningScreen extends StatefulWidget {
     required this.repository,
     required this.household,
     this.initialTab = 0,
+    this.initialMonth,
   });
   final HouseholdRepository repository;
   final Household household;
   final int initialTab;
+  final DateTime? initialMonth;
   @override
   State<PlanningScreen> createState() => _PlanningScreenState();
 }
@@ -42,7 +44,9 @@ class _PlanningScreenState extends State<PlanningScreen> {
           .collection('personalExpenses')
           .where('groupId', isEqualTo: widget.household.id)
           .snapshots(includeMetadataChanges: true);
-  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime month =
+      widget.initialMonth ??
+      DateTime(DateTime.now().year, DateTime.now().month);
   bool busy = false;
   List<FinanceEntry>? searchResults;
   void _reload() => setState(() {
@@ -418,6 +422,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
             builder: (_) => PlanningScreen(
               repository: widget.repository,
               household: choice,
+              initialMonth: month,
             ),
           ),
         );

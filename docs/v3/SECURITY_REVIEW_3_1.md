@@ -137,7 +137,7 @@ cannot be treated as a correct financial rollback; fix forward or disable new
 entry routes while retaining the data and secure rules.
 
 
-Additional real-SDK check: tool/integration/repository_emulator_test.dart uses
+Additional real-SDK check: test/emulator/repository_emulator_browser_test.dart uses
 real named Firebase apps, Auth emulator email/password accounts, and the actual
 HouseholdRepository/ItemsRepository/PlanningRepository with V3_ENABLED=true.
 Every app uses hardcoded demo-bashahisab and localhost endpoints, never the native
@@ -157,5 +157,7 @@ Reproduce on a machine with Flutter web SDK, Chrome, Java 21, Node 22 and intern
 ```
 flutter pub get --enforce-lockfile
 npm ci --prefix tool/rules-tests
-tool/rules-tests/node_modules/.bin/firebase emulators:exec --only auth,firestore --project demo-bashahisab --config firebase.emulator-tests.json 'flutter test tool/integration/repository_emulator_test.dart --platform chrome --dart-define=V3_ENABLED=true --reporter expanded'
+tool/rules-tests/node_modules/.bin/firebase emulators:exec --only auth,firestore --project demo-bashahisab --config firebase.emulator-tests.json 'flutter test test/emulator/repository_emulator_browser_test.dart --platform chrome --dart-define=V3_ENABLED=true --reporter expanded'
 ```
+
+Reviewed repository rules SHA-256: `c0ece12ebca45c856fb3d053be07ab10a96be3ce6389cbae7dc035167e35d579`. This identifies the candidate, not the deployed production policy.

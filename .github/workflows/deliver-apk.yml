@@ -65,7 +65,7 @@ jobs:
           CHROME_EXECUTABLE: /usr/bin/google-chrome
         run: |
           set -o pipefail
-          tool/rules-tests/node_modules/.bin/firebase emulators:exec --only auth,firestore --project demo-bashahisab --config firebase.emulator-tests.json 'flutter test tool/integration/repository_emulator_test.dart --platform chrome --dart-define=V3_ENABLED=true --reporter expanded' 2>&1 | tee emulator-repository-tests.log
+          tool/rules-tests/node_modules/.bin/firebase emulators:exec --only auth,firestore --project demo-bashahisab --config firebase.emulator-tests.json 'flutter test test/emulator/repository_emulator_browser_test.dart --platform chrome --dart-define=V3_ENABLED=true --reporter expanded' 2>&1 | tee emulator-repository-tests.log
       - uses: actions/upload-artifact@v4
         if: always() && contains(github.event.head_commit.message, 'dashboard')
         with:

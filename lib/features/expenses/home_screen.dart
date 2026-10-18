@@ -30,9 +30,11 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.householdId,
+    this.refreshNotifications,
   });
   final HouseholdRepository repository;
   final String householdId;
+  final Future<void> Function()? refreshNotifications;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -179,15 +181,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _itemTab = tab;
     _tab = 1;
   });
-  void _planning(Household home, [int tab = 0]) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => PlanningScreen(
-        repository: widget.repository,
-        household: home,
-        initialTab: tab,
-      ),
-    ),
-  );
+  void _planning(Household home, [int tab = 0, DateTime? month]) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlanningScreen(
+            repository: widget.repository,
+            household: home,
+            initialTab: tab,
+            initialMonth: month,
+          ),
+        ),
+      );
   void _profile() => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => ProfileScreen(repository: widget.repository),
@@ -327,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           household: home,
                           enabled: widget.repository.enableItemIntelligence,
                           initialTab: _itemTab,
+                          embedded: true,
                           onHistory: () => setState(() => _tab = 2),
                         ),
                         2 => _history(home),
@@ -395,7 +400,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       )
-                    : _planning(home, entry.$2 < 0 ? 0 : entry.$2),
+                    : _planning(home, entry.$2 < 0 ? 0 : entry.$2, _month),
               ),
           ],
         ),
@@ -500,14 +505,23 @@ class _HomeScreenState extends State<HomeScreen> {
         (
           icon: Icons.notifications_outlined,
           title: 'Notifications',
-          tap: () => widget.repository.enableItemIntelligence
-              ? Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        NotificationScreen(repository: widget.repository),
-                  ),
-                )
-              : _planning(home),
+          tap: () async {
+            if (!widget.repository.enableItemIntelligence) {
+              _planning(home);
+              return;
+            }
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    NotificationScreen(repository: widget.repository),
+              ),
+            );
+            try {
+              await widget.refreshNotifications?.call();
+            } catch (e) {
+              if (mounted) showError(context, e);
+            }
+          },
         ),
         (
           icon: Icons.translate,

@@ -16,10 +16,12 @@ class ItemsScreen extends StatefulWidget {
     required this.enabled,
     this.initialTab = 0,
     this.onHistory,
+    this.embedded = false,
   });
   final ItemsRepository repository;
   final Household household;
   final bool enabled;
+  final bool embedded;
   final int initialTab;
   final VoidCallback? onHistory;
   @override
@@ -496,6 +498,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
       initialIndex: widget.initialTab,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: !widget.embedded,
           title: const AppText('Grocery & kitchen'),
           bottom: const TabBar(
             isScrollable: true,
