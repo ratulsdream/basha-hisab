@@ -37,3 +37,17 @@ uses its additive profile/membership flow.
 Production activation is NOT complete. See SECURITY_REVIEW_3_1.md for the precise
 rule export, review, approval and activation sequence. Never enable production
 v3 modules solely to remove a locked-state message.
+
+
+Validation: 85 Flutter tests passed in both default and V3_ENABLED=true builds;
+33 Firestore emulator authorization tests, 6 audit/export helper tests and 2
+notification policy tests passed. Flutter analyze and formatting/actionlint are
+clean. The offline native Tesseract smoke test recognized Greek and English
+fixture dates/totals. Android debug build and APK signature verification passed;
+package version is 3.1.0-dashboard+8. Native camera/gallery, actual phone offline
+reconnect and iOS compilation remain device/Mac acceptance, not claimed here.
+
+Navigation follow-up preserves the chosen History month in reports, removes a
+misleading nested back button from Items, and refreshes reminder scheduling after
+notification settings change from More. Group switch tests confirm separate
+home histories and per-account remembered group IDs without modifying expenses.

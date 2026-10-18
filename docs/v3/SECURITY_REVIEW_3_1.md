@@ -157,7 +157,16 @@ Reproduce on a machine with Flutter web SDK, Chrome, Java 21, Node 22 and intern
 ```
 flutter pub get --enforce-lockfile
 npm ci --prefix tool/rules-tests
-tool/rules-tests/node_modules/.bin/firebase emulators:exec --only auth,firestore --project demo-bashahisab --config firebase.emulator-tests.json 'flutter test test/emulator/repository_emulator_browser_test.dart --platform chrome --dart-define=V3_ENABLED=true --reporter expanded'
+tool/run_web_repository_tests.sh
 ```
 
 Reviewed repository rules SHA-256: `c0ece12ebca45c856fb3d053be07ab10a96be3ce6389cbae7dc035167e35d579`. This identifies the candidate, not the deployed production policy.
+
+
+The browser integration harness serves the integrity-locked npm Firebase 12.19.0
+SDK (matching firebase_core_web's supported version) from a temporary loopback
+module server, rather than depending on runtime CDN imports. This is the genuine
+SDK, not a fake backend or a security bypass. The bundle is test-only and is not
+an Android/iOS app asset. npm ci verifies its lockfile integrity. The helper
+starts/stops its own temporary server and Auth/Firestore emulators, all on local
+ports, and never loads production native configuration.

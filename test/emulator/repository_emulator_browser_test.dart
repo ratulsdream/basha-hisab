@@ -1,6 +1,10 @@
 @TestOn('browser')
 library;
 
+import 'dart:async';
+import 'dart:js_interop';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'dart:js_interop_unsafe';
 import 'package:basha_hisab/data.dart';
 import 'package:basha_hisab/domain.dart';
 import 'package:basha_hisab/features/items/feature_gate.dart';
@@ -12,9 +16,44 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+@JS('window.addEventListener')
+external void browserEvent(JSString name, JSFunction listener);
+
+@JS('document.createElement')
+external JSObject createElement(JSString name);
+@JS('document.head.appendChild')
+external void appendElement(JSObject element);
+Future<void> loadTestSdk() async {
+  final script = createElement('script'.toJS);
+  final loaded = Completer<void>();
+  script['type'] = 'module'.toJS;
+  script['src'] = 'http://127.0.0.1:9030/firebase-sdk.js'.toJS;
+  script['onload'] = ((JSAny? _) {
+    loaded.complete();
+  }).toJS;
+  script['onerror'] = ((JSAny? _) {
+    loaded.completeError(
+      StateError(
+        'The local, locked test SDK bundle could not load. Start tool/run_web_repository_tests.sh.',
+      ),
+    );
+  }).toJS;
+  appendElement(script);
+  await loaded.future.timeout(const Duration(seconds: 15));
+}
+
 /// Real FlutterFire SDKs + actual local emulators; never fake Firestore or production config.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  browserEvent(
+    'unhandledrejection'.toJS,
+    ((JSObject event) {
+      final reason = event.getProperty<JSObject>('reason'.toJS);
+      debugPrint(
+        'Browser promise rejection: ${reason.callMethod<JSString>('toString'.toJS).toDart}',
+      );
+    }).toJS,
+  );
   test(
     'enabled real repositories preserve expenses, share with members and isolate groups',
     () async {
@@ -23,8 +62,11 @@ void main() {
         true,
         reason: 'Run with --dart-define=V3_ENABLED=true',
       );
+      debugPrint('EMULATOR: load the integrity-locked local browser SDK');
+      await loadTestSdk();
       final apps = <FirebaseApp>[];
       Future<HouseholdRepository> account(String label) async {
+        debugPrint('EMULATOR: initialize Firebase app for $label');
         final app = await Firebase.initializeApp(
           name: '$label-${DateTime.now().microsecondsSinceEpoch}',
           options: const FirebaseOptions(
@@ -33,13 +75,16 @@ void main() {
             messagingSenderId: '1234567890',
             projectId: 'demo-bashahisab',
           ),
-        );
+        ).timeout(const Duration(seconds: 30));
+        debugPrint('EMULATOR: Firebase app initialized for $label');
         apps.add(app);
         final auth = FirebaseAuth.instanceFor(app: app);
+        debugPrint('EMULATOR: configure Auth and Firestore for $label');
         await auth.useAuthEmulator('127.0.0.1', 9099);
         final db = FirebaseFirestore.instanceFor(app: app);
         db.settings = const Settings(persistenceEnabled: false);
         db.useFirestoreEmulator('127.0.0.1', 8080, automaticHostMapping: false);
+        debugPrint('EMULATOR: create local account for $label');
         await auth.createUserWithEmailAndPassword(
           email: '$label-${DateTime.now().microsecondsSinceEpoch}@example.test',
           password: 'Only-for-emulators-2026',
@@ -49,18 +94,22 @@ void main() {
           firestore: db,
           enableItemIntelligence: v3ItemsEnabled,
         );
+        debugPrint('EMULATOR: ensure profile for $label');
         await repo.ensureProfile();
+        debugPrint('EMULATOR: profile ready for $label');
         return repo;
       }
 
       final a = await account('alice'),
           b = await account('bob'),
           outsider = await account('outsider');
+      debugPrint('EMULATOR: create group');
       final id = await a.createHousehold('Emulator home', 'EUR');
       var home = Household(
         id,
         (await a.db.collection('households').doc(id).get()).data()!,
       );
+      debugPrint('EMULATOR: join group');
       await b.joinHousehold(home.inviteCode);
       home = Household(
         id,
@@ -79,6 +128,7 @@ void main() {
         total: 1000,
         category: 'food',
       );
+      debugPrint('EMULATOR: save receipt and retry stable ID');
       await save();
       await save();
       final shared = b.db.collection('households').doc(id);
@@ -94,6 +144,7 @@ void main() {
             .data()['name'],
         'ΓΑΛΑ',
       );
+      debugPrint('EMULATOR: purchase indexing and stock');
       final items = ItemsRepository(a.db, a.uid, id);
       final purchaseDoc =
           (await items.collection('purchases').get()).docs.single;
@@ -107,6 +158,7 @@ void main() {
             .data()!['quantityMilli'],
         1500,
       );
+      debugPrint('EMULATOR: budget and payments');
       final planning = PlanningRepository(a.db, a.uid, id);
       await planning.setBudget('2026-10', 5000, {'food': 3000}, -1);
       await planning.recordPayment(
@@ -176,6 +228,7 @@ void main() {
           ),
         ),
       );
+      debugPrint('EMULATOR: second group and leave preservation');
       final second = await a.createHousehold('Second emulator home', 'EUR');
       expect((await a.watchMemberships().first).docs.length, 2);
       expect(

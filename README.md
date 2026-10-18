@@ -1,4 +1,8 @@
-# BashaHisab v3 — Smart Household Edition
+# BashaHisab 3.1 — Simple Dashboard
+
+Four bottom tabs — Home, Items, History and More — reuse the existing v3 modules. The redesign adds teal Material 3 styling, light/dark themes, locally saved English/Bengali preferences and bundled Bengali fonts. [Release and install notes](docs/v3/DASHBOARD_RELEASE.md).
+
+**Production v3 activation remains blocked** until the currently published rules are exported and reviewed, and any deployment is explicitly approved. [How to provide the rules and activate safely](docs/v3/SECURITY_REVIEW_3_1.md). No production rules/data were changed.
 
 Incremental issue #1 implementation: [phase tracker](docs/v3/STATUS.md), [Phase 0](docs/v3/PHASE_0.md), [Phase 1](docs/v3/PHASE_1.md), [Phase 2](docs/v3/PHASE_2.md), [Phase 3 and install/migration notes](docs/v3/PHASE_3.md). Production rules are not deployed automatically; new modules default to a closed security gate pending deployed-rule verification.
 
