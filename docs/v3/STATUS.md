@@ -36,3 +36,9 @@ configurations, with 33 security emulator tests and a successful genuine
 FlutterFire/Auth/Firestore emulator repository scenario in Actions. Production
 rule export/comparison and explicitly approved deployment/activation remain
 blocked. No production rules or data were changed.
+
+
+Final 3.1 APK source: d105ba1. Download and exact manifest digest are in APKS.md.
+Delivery run 39118754893 passed the real SDK integration and published the APK.
+Production rules comparison/deployment/activation and physical-device/iOS
+acceptance remain explicitly unverified. The rules file is unchanged by 3.1.

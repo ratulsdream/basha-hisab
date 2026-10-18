@@ -59,7 +59,7 @@ balance until repayment access is verified, rather than implying those payment
 records were read. The unavailable-planning History action opens real History.
 
 The real FlutterFire/local-emulator integration passed in GitHub Actions:
-https://github.com/ratulsdream/basha-hisab/actions/runs/39118119609
+https://github.com/ratulsdream/basha-hisab/actions/runs/39118754893
 It exercised actual repositories and SDKs with V3_ENABLED=true, beyond fake
 Firestore widget tests. This validates the candidate against local rules, not
 the currently deployed production rules or physical-device behavior.

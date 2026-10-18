@@ -172,7 +172,7 @@ starts/stops its own temporary server and Auth/Firestore emulators, all on local
 ports, and never loads production native configuration.
 
 
-Real SDK integration result: PASSED in Actions run 39118119609 (1 full repository
+Real SDK integration result: PASSED in Actions run 39118754893 (1 full repository
 scenario; account recovery/profile, join, expense retry/indexing, stock events,
 budget/repayment, private and cross-group denial, multi-group membership, leave
 and original expense retention). The browser runner explicitly registers genuine
