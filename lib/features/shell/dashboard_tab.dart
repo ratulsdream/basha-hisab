@@ -93,36 +93,24 @@ class _DashboardTabState extends State<DashboardTab> {
       return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: widget.repository.enableItemIntelligence ? payments : null,
         builder: (context, p) {
-          final settlement = widget.repository.enableItemIntelligence
-              ? financeSettlement(
-                  widget.home.members,
-                  widget.home.legacyMembers,
-                  rows.map(
-                    (e) => FinanceEntry(
-                      id: e.id,
-                      merchant: e.merchant,
-                      payer: e.payer,
-                      date: e.date,
-                      amount: e.total,
-                      refund: e.refund,
-                      category: e.category,
-                      splits: e.splits,
-                      members: e.splitBetween,
-                    ),
-                  ),
-                  p.data?.docs.map((d) => paymentFromMap(d.id, d.data())) ?? [],
-                )
-              : calculateGroupSettlement(
-                  widget.home.members,
-                  widget.home.legacyMembers,
-                  rows.map(
-                    (e) => (
-                      payer: e.payer,
-                      amount: e.total,
-                      splitBetween: e.splitBetween,
-                    ),
-                  ),
-                );
+          final settlement = financeSettlement(
+            widget.home.members,
+            widget.home.legacyMembers,
+            rows.map(
+              (e) => FinanceEntry(
+                id: e.id,
+                merchant: e.merchant,
+                payer: e.payer,
+                date: e.date,
+                amount: e.total,
+                refund: e.refund,
+                category: e.category,
+                splits: e.splits,
+                members: e.splitBetween,
+              ),
+            ),
+            p.data?.docs.map((d) => paymentFromMap(d.id, d.data())) ?? [],
+          );
           final colors = Theme.of(context).colorScheme;
           final uid = widget.repository.uid;
           final peerPaid = settlement.paid.entries
@@ -244,6 +232,14 @@ class _DashboardTabState extends State<DashboardTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (!widget.repository.enableItemIntelligence)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: AppText(
+                              'Shared-expense balance; repayments need verified access.',
+                            ),
+                          ),
+
                         if (widget.home.members.length < 2 &&
                             settlement.transfers.isEmpty)
                           const AppText('Waiting for roommate')

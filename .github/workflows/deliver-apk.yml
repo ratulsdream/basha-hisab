@@ -94,13 +94,15 @@ jobs:
           result += 'emulator_repository_tests=' + os.environ['REPOSITORY_TESTS'] + '\n'
           if os.environ['REPOSITORY_TESTS'] == 'failure':
               log = Path('emulator-repository-tests.log')
-              result += '\n' + (log.read_text()[-16000:] if log.exists() else 'No test log produced.')
+              result += '\n' + (log.read_text()[:16000] if log.exists() else 'No test log produced.')
           Path('.v2-apk-delivery/status.txt').write_text(result)
+          log = Path('emulator-repository-tests.log')
+          Path('.v2-apk-delivery/verification.log').write_text(log.read_text() if log.exists() else 'No repository test log produced.')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('Download the verified APK: ' + os.environ['ARTIFACT_URL'] + '\n')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .v2-apk-delivery/status.txt
+          git add .v2-apk-delivery/status.txt .v2-apk-delivery/verification.log
           git commit -m '[delivery-status] Record APK verification and download URL'
           git push origin HEAD:delivery/v2-apk

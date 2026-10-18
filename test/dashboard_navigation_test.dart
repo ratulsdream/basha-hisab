@@ -239,4 +239,33 @@ void main() {
       );
     },
   );
+  testWidgets(
+    'locked tools still interpret saved refunds and custom shares without optional reads',
+    (tester) async {
+      final original = (await db.doc('households/home/expenses/receipt').get())
+          .data()!;
+      await db.doc('households/home/expenses/receipt').update({
+        'splitCents': {'a': 600, 'b': 400},
+      });
+      await db.doc('households/home/expenses/refund').set({
+        ...original,
+        'total': 200,
+        'kind': 'refund',
+      });
+      await open(tester);
+      expect(find.text('EUR 8.00'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.text('My share'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('EUR 5.00'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Shared-expense balance; repayments need verified access.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Bob owes Alice EUR 3.00'), findsOneWidget);
+    },
+  );
 }

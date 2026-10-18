@@ -340,4 +340,6 @@ const bengali = <String, String>{
   "recurring": "নিয়মিত বিল",
   "settlement": "দেনা-পাওনা",
   "budget": "বাজেট",
+  'Shared-expense balance; repayments need verified access.':
+      'যৌথ খরচের হিসাব; পরিশোধের তথ্য দেখাতে অনুমতি যাচাই প্রয়োজন।',
 };
