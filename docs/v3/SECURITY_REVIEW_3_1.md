@@ -5,8 +5,9 @@
 Repository audit and isolated tests are complete. On 2026-10-18 the owner supplied
 an authenticated Cloud Shell export of the published rules. The complete
 [comparison and proposed deployment scope](DEPLOYED_RULES_COMPARISON.md) records
-the policy differences, hashes and both emulator results. Production deployment
-and activation still await explicit approval and post-deployment verification.
+the policy differences, hashes and both emulator results. The owner has now
+[approved the exact rules-only change](APPROVED_RULES_DEPLOYMENT.md), conditional
+on a fresh baseline check. Execution and post-deployment verification are pending.
 No Firebase administrative sign-in is available in this environment; the export
 was made in the owner's Google session. Native app configuration and GitHub
 access do not grant Firebase administration.

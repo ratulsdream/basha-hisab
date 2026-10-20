@@ -1,8 +1,11 @@
 # Published rules comparison and proposed activation
 
-Review date: 2026-10-18. **Comparison completed; production deployment and app
-activation are NOT approved or performed.** Both production build flags remain
-false. No production documents were read, modified or deleted during this review.
+Review date: 2026-10-18. **Comparison completed; the owner subsequently approved
+the exact rules-only deployment subject to a fresh baseline check. Execution and
+post-deployment verification remain pending.** See
+[the approval record and guarded helper](APPROVED_RULES_DEPLOYMENT.md). Both
+production build flags remain false. No production documents were read, modified
+or deleted during this review.
 
 ## Evidence and exact proposed policy
 
@@ -122,8 +125,9 @@ all document modifications, and any unrelated Firebase project.
    use an explicitly agreed test group/accounts; do not silently add test records
    to the user's real household. Keep iOS compatibility and report device limits.
 
-No deployment command has been executed or supplied as an instruction to run
-before approval. Existing flags remain closed. Remote notifications/APNs and
+No deployment command was executed or supplied before approval. The approved
+helper now uses only the official Rules API operations; see the approval record
+for its tighter executable scope. Existing flags remain closed. Remote notifications/APNs and
 physical-device acceptance are separate from this permission-policy comparison.
 
 Rollback: preserve the exact original rules export and all data. If necessary,
